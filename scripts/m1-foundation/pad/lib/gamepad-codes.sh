@@ -2,6 +2,8 @@
 # Shared 8BitDo Micro evdev codes (Switch BT → "Pro Controller").
 
 # Face cluster (clockwise from left): Y · X · A · B
+# Default is 8BitDo Micro / Nintendo HID. 8BitDo Zero 2 Switch HID reports
+# A↔B and X↔Y; set MANGO_PAD_FACE_LAYOUT=abxy-swap in /etc/mango/pad.env.
 export MANGO_BTN_SELECT_FACE=304   # B — bottom — confirm
 export MANGO_BTN_SHUFFLE_FACE=307  # X — top — launcher contextual secondary
 export MANGO_BTN_BACK_FACE=308       # Y — left — in-app back only

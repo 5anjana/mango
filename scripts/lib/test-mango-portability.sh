@@ -75,4 +75,10 @@ if grep -E '10\.0\.0\.174|mango\.local' "$ROOT/scripts/m5-voice/stack/setup-mkce
 fi
 pass "mkcert uses the current host"
 
+grep -q '/etc/mango/pad.env' "$ROOT/scripts/m1-foundation/pad/run-mango-tv-pad.sh" \
+  || fail "pad runner must source operator /etc/mango/pad.env"
+grep -q 'MANGO_PAD_FACE_LAYOUT' "$ROOT/scripts/m1-foundation/pad/mango-tv-pad.py" \
+  || fail "pad router must honor MANGO_PAD_FACE_LAYOUT"
+pass "pad face-layout overlay is portable"
+
 echo "PASS: mango portability"

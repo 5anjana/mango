@@ -19,6 +19,7 @@ sudo apt install -y \
   socat \
   xdotool \
   wmctrl \
+  x11-utils \
   chromium-browser
 
 echo

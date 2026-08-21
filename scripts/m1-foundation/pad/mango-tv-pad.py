@@ -107,10 +107,46 @@ PLAYBACK_APPS = frozenset({"mpv"})
 def _playback_app(app: str) -> bool:
     return app in PLAYBACK_APPS
 
-BTN_B = 304
-BTN_A = 305
-BTN_X = 307
-BTN_Y = 308
+def _int_env(name: str, default: int, environ: dict[str, str] | None = None) -> int:
+    env = os.environ if environ is None else environ
+    raw = str(env.get(name, "")).strip()
+    if not raw:
+        return default
+    try:
+        return int(raw, 0)
+    except ValueError:
+        return default
+
+
+def face_button_codes(
+    *,
+    layout: str | None = None,
+    environ: dict[str, str] | None = None,
+) -> dict[str, int]:
+    """Map physical face labels to evdev codes.
+
+    nintendo (8BitDo Micro): B=304 select, A=305 audio, X=307 shuffle, Y=308 back.
+    abxy-swap (8BitDo Zero 2 Switch HID): those pairs are reversed.
+    """
+    env = os.environ if environ is None else environ
+    name = (layout or env.get("MANGO_PAD_FACE_LAYOUT") or "nintendo").strip().lower()
+    if name in {"abxy-swap", "swap-abxy", "zero2"}:
+        base = {"select": 305, "audio": 304, "secondary": 308, "back": 307}
+    else:
+        base = {"select": 304, "audio": 305, "secondary": 307, "back": 308}
+    return {
+        "select": _int_env("MANGO_PAD_BTN_SELECT", base["select"], env),
+        "audio": _int_env("MANGO_PAD_BTN_AUDIO", base["audio"], env),
+        "secondary": _int_env("MANGO_PAD_BTN_SECONDARY", base["secondary"], env),
+        "back": _int_env("MANGO_PAD_BTN_BACK", base["back"], env),
+    }
+
+
+_FACE = face_button_codes()
+BTN_B = _FACE["select"]
+BTN_A = _FACE["audio"]
+BTN_X = _FACE["secondary"]
+BTN_Y = _FACE["back"]
 BTN_MINUS = 314
 BTN_PLUS = 315
 BTN_TL = 310  # L shoulder — prev browse tab (launcher)
@@ -330,6 +366,35 @@ def _xdotool(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _window_class_from_wmctrl(wid: str) -> str:
+    try:
+        wid_int = int(wid, 0)
+    except ValueError:
+        return ""
+    try:
+        result = subprocess.run(
+            ["wmctrl", "-lx"],
+            env=_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return ""
+    for line in result.stdout.splitlines():
+        parts = line.split(None, 4)
+        if len(parts) < 3:
+            continue
+        try:
+            if int(parts[0], 16) != wid_int:
+                continue
+        except ValueError:
+            continue
+        return parts[2].replace(".", " ").lower()
+    return ""
+
+
 def _window_class(wid: str) -> str:
     result = _xdotool("getwindowclassname", wid)
     if result.returncode == 0 and result.stdout.strip():
@@ -344,11 +409,14 @@ def _window_class(wid: str) -> str:
             check=False,
         )
     except FileNotFoundError:
-        return ""
-    matches = re.findall(r'"([^"]+)"', result.stdout)
-    if matches:
-        return " ".join(part.lower() for part in matches)
-    return result.stdout.strip().lower()
+        result = None
+    if result is not None:
+        matches = re.findall(r'"([^"]+)"', result.stdout)
+        if matches:
+            return " ".join(part.lower() for part in matches)
+        if result.stdout.strip():
+            return result.stdout.strip().lower()
+    return _window_class_from_wmctrl(wid)
 
 
 def _window_name(wid: str) -> str:
@@ -459,11 +527,17 @@ def _is_launcher_window_from_parts(
         return False
     if f"127.0.0.1:{LAUNCHER_PORT}/" not in cmdline:
         return False
-    if "Map State: IsViewable" not in xwininfo:
-        return False
-    if "Class: InputOutput" not in xwininfo:
-        return False
-    if "mango-launcher" in klass and process in {"chromium", "chrome", "chromium-browser"}:
+    if xwininfo:
+        if "Map State: IsViewable" not in xwininfo:
+            return False
+        if "Class: InputOutput" not in xwininfo:
+            return False
+    launcherish = (
+        "mango-launcher" in klass
+        or "mango-launcher" in cmdline
+        or "--class=mango-launcher" in cmdline
+    )
+    if launcherish and process in {"chromium", "chrome", "chromium-browser"}:
         return True
     browser_blob = f"{klass} {process} {cmdline}"
     return "firefox" in browser_blob or "navigator" in browser_blob
@@ -1444,7 +1518,13 @@ def run_pad_session(dev: evdev.InputDevice) -> None:
 def main() -> None:
     write_pid_file()
     write_status("starting", last_action="boot")
-    print("mango-tv-pad: router ready (wake pad with any button)", flush=True)
+    layout = (os.environ.get("MANGO_PAD_FACE_LAYOUT") or "nintendo").strip().lower()
+    print(
+        "mango-tv-pad: router ready "
+        f"layout={layout} select={BTN_B} back={BTN_Y} secondary={BTN_X} "
+        "(wake pad with any button)",
+        flush=True,
+    )
     while True:
         dev: evdev.InputDevice | None = None
         try:

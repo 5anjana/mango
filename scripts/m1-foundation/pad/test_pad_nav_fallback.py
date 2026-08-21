@@ -99,6 +99,34 @@ class PadNavNoXdotoolFallbackTests(unittest.TestCase):
             send_nav.assert_not_called()
             send_key.assert_called_once_with("Down", app=None)
 
+    def test_chromium_launcher_cmdline_is_enough_without_xwininfo(self) -> None:
+        pad = _load_pad_with_fake_evdev()
+        with patch.object(pad, "_window_xwininfo", return_value=""):
+            self.assertTrue(
+                pad._is_launcher_window_from_parts(
+                    "1",
+                    name="mango",
+                    klass="",
+                    process="chromium",
+                    cmdline=(
+                        "/usr/lib/chromium/chromium --class=mango-launcher "
+                        "--kiosk --app=http://127.0.0.1:3000/"
+                    ),
+                )
+            )
+
+    def test_wmctrl_class_fallback_parses_hex_window_id(self) -> None:
+        pad = _load_pad_with_fake_evdev()
+        wmctrl = MagicMock(
+            stdout="0x00c00003  0 127.0.0.1.mango-launcher  raspberrypi mango\n",
+            returncode=0,
+        )
+        with patch.object(pad.subprocess, "run", return_value=wmctrl):
+            self.assertEqual(
+                pad._window_class_from_wmctrl("12582915"),
+                "127 0 0 1 mango-launcher",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
