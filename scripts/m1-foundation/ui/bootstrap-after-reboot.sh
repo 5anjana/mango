@@ -7,9 +7,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
+# shellcheck source=../../lib/mango-user.sh
+source "$REPO_DIR/scripts/lib/mango-user.sh"
+if [[ -z "${HOME:-}" || "${HOME}" == "/" ]]; then
+  mango_export_tv_identity
+fi
 export DISPLAY="${DISPLAY:-:0}"
 export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
-export HOME="${HOME:-/home/aman}"
 
 rm -f "${HOME}/.cache/mango/launch-launcher.lock"
 
@@ -22,7 +26,7 @@ source "$REPO_DIR/scripts/m1-foundation/pad/lib/irctl.sh"
 ir_kill_readers || true
 
 echo "=== openbox + remapper ==="
-bash scripts/m1-foundation/pad/install-openbox-stremio-tv.sh
+bash scripts/m1-foundation/ui/install-openbox-autostart.sh
 openbox --reconfigure 2>/dev/null || true
 
 echo "=== mango stack ==="

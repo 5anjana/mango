@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { loadFilterConfig, validateMainLadderPiPolicy } from './stream-filters.js';
 
@@ -80,5 +81,16 @@ test('S3: loadFilterConfig validates legacy ladder after main/last-resort split'
     await assert.rejects(() => loadFilterConfig(path), /4K requires require_hevc=true/);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('S3: repository default filters load on the X11 hifi profile', async () => {
+  const previous = process.env.MANGO_PLAYBACK_CAPABILITY_PROFILE;
+  process.env.MANGO_PLAYBACK_CAPABILITY_PROFILE = 'pi5-x11-mpv-hifi';
+  try {
+    await loadFilterConfig(fileURLToPath(new URL('../../../config/catalog-filters.example.json', import.meta.url)));
+  } finally {
+    if (previous === undefined) delete process.env.MANGO_PLAYBACK_CAPABILITY_PROFILE;
+    else process.env.MANGO_PLAYBACK_CAPABILITY_PROFILE = previous;
   }
 });

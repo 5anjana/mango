@@ -10,9 +10,13 @@ source "$REPO_DIR/scripts/m1-foundation/pad/lib/irctl.sh"
 # shellcheck source=lib/launcher-window.sh
 source "$REPO_DIR/scripts/lib/launcher-window.sh"
 
-export DISPLAY=":0"
-export XAUTHORITY="/home/aman/.Xauthority"
-export HOME="/home/aman"
+# shellcheck source=lib/mango-user.sh
+source "$REPO_DIR/scripts/lib/mango-user.sh"
+if [[ -z "${HOME:-}" || "${HOME}" == "/" || "$(id -u)" -eq 0 ]]; then
+  mango_export_tv_identity
+fi
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-${HOME}/.Xauthority}"
 if [[ -f "${HOME}/.config/mango/voice.env" ]]; then
   # shellcheck disable=SC1091
   source "${HOME}/.config/mango/voice.env"

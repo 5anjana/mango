@@ -3,7 +3,10 @@
 
 set -euo pipefail
 
-BT_MAC="${MANGO_GAMEPAD_BT_MAC:-E4:17:D8:EB:00:44}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../lib/mango-user.sh
+source "$SCRIPT_DIR/../../lib/mango-user.sh"
+BT_MAC="$(mango_gamepad_mac)" || exit 1
 CONNECT_TIMEOUT_SEC="${MANGO_GAMEPAD_CONNECT_TIMEOUT_SEC:-12}"
 CONNECT_WAIT_STEPS="${MANGO_GAMEPAD_CONNECT_WAIT_STEPS:-24}"
 

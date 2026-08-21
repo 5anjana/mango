@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Run mango-tv-pad as root for evdev grab — fixed paths (no sudo -E).
+# Run mango-tv-pad as root for evdev grab — recover the couch user after sudo.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+# shellcheck source=../../lib/mango-user.sh
+source "$REPO_DIR/scripts/lib/mango-user.sh"
+
+mango_export_tv_identity
 export DISPLAY="${DISPLAY:-:0}"
-export XAUTHORITY="${XAUTHORITY:-/home/aman/.Xauthority}"
-export HOME="/home/aman"
-export USER="aman"
-export SUDO_USER="aman"
 
 if [[ -f "${HOME}/.cache/mango/diag/session.env" ]]; then
   set -a

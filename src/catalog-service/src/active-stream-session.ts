@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { mangoHome } from './home.js';
 import type { Stream } from './core.js';
 import {
   getMpvPlaybackState,
@@ -133,7 +134,7 @@ function pickerEnabled(): boolean {
 
 function statePath(): string {
   return process.env.MANGO_ACTIVE_STREAMS_PATH
-    || `${process.env.HOME || '/home/aman'}/.cache/mango/active-streams.json`;
+    || `${mangoHome()}/.cache/mango/active-streams.json`;
 }
 
 function candidateId(sessionId: string, fingerprint: string): string {

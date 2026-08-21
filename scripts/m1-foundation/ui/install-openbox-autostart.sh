@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../../lib/openbox-rc.sh
-source "$SCRIPT_DIR/../lib/openbox-rc.sh"
+source "$SCRIPT_DIR/../../lib/openbox-rc.sh"
 
 OPENBOX_DIR="${HOME}/.config/openbox"
 AUTOSTART_FILE="$OPENBOX_DIR/autostart"
@@ -51,4 +51,4 @@ text = re.sub(
 path.write_text(text)
 PY
 
-echo "Openbox autostart installed (home = Super+h via install-openbox-stremio-tv.sh)."
+echo "Openbox autostart installed."

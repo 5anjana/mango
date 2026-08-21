@@ -191,10 +191,9 @@ display-wake helper, which only forces the display on/disables automatic DPMS.
   pairing mode.
 - Reconcile the backend `controller_repair` action with the launcher Settings
   surface before documenting it as a visible button.
-- Make intentionally disabled/unconfigured Live neutral in Reliability Center;
-  current source incorrectly makes `live_config_ready=false` overall red. Add an
-  explicit Live-off test while retaining red for configured Live without usable
-  current/stale cache.
+- Intentionally disabled/unconfigured Live is green/neutral in Reliability
+  Center, with a Live-off test. Configured Live without usable current/stale
+  cache remains red.
 - Fix the committed playability migration marker (`14` in the migration table
   versus `13` from `/playability/status`) and make API/reporting tests
   authoritative.

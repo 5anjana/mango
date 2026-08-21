@@ -6,6 +6,7 @@
 |--|--|
 | **Host** | SSH alias `mango` primary; `MANGO_SSH_HOST=mango-mdns` fallback via `mango.local` (numeric LAN addresses are not durable truth) |
 | **Repo** | `~/mango` · [github.com/4m4n5/mango](https://github.com/4m4n5/mango) |
+| **User** | Couch account resolved by `MANGO_TV_USER` / `SUDO_USER` / logged-in user; `/home/aman` is not required |
 | **Branch** | `feat/native-experience` (native stack) |
 | **Split machine** | Work Mac: push only · Home Mac (Pi LAN): deploy — [`DEPLOY-SPLIT-MACHINE.md`](DEPLOY-SPLIT-MACHINE.md) |
 

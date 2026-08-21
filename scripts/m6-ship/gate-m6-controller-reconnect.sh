@@ -4,7 +4,9 @@
 set -euo pipefail
 
 REPO_DIR="${MANGO_REPO_DIR:-$HOME/mango}"
-BT_MAC="${MANGO_GAMEPAD_BT_MAC:-E4:17:D8:EB:00:44}"
+# shellcheck source=../lib/mango-user.sh
+source "$REPO_DIR/scripts/lib/mango-user.sh"
+BT_MAC="$(mango_gamepad_mac)" || exit 1
 STATUS_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/mango/mango-controller-link-status.json"
 
 failures=0
@@ -23,7 +25,7 @@ pad_count="$(pgrep -fc '[m]ango-tv-pad\.py' 2>/dev/null || true)"
 [[ "$link_count" == "1" ]] && pass "one link owner" || fail "expected one link owner, got ${link_count:-0}"
 [[ "$pad_count" == "1" ]] && pass "one pad owner" || fail "expected one pad owner, got ${pad_count:-0}"
 
-if pgrep -f '^bluetoothctl connect E4:17:D8:EB:00:44$' >/dev/null 2>&1; then
+if pgrep -f '^bluetoothctl connect ' >/dev/null 2>&1; then
   fail "orphan bluetoothctl connect process"
 else
   pass "no orphan bluetoothctl connect"

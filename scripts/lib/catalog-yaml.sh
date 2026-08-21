@@ -8,13 +8,12 @@ resolve_catalog_yaml() {
     printf '%s\n' "$MANGO_CATALOG_YAML"
     return 0
   fi
-  if [[ -f "$example" && -f "$etc" ]] && ! cmp -s "$example" "$etc"; then
-    echo "catalog: /etc/mango/catalog.yaml differs from repo — using config/catalog.example.yaml" >&2
-    echo "catalog: sync with: sudo cp config/catalog.example.yaml /etc/mango/catalog.yaml" >&2
-    printf '%s\n' "$example"
-    return 0
-  fi
+  # Device-owned /etc/mango is operator state. Never silently replace it with
+  # the repository example when the two files differ.
   if [[ -f "$etc" ]]; then
+    if [[ -f "$example" ]] && ! cmp -s "$example" "$etc"; then
+      echo "catalog: using operator /etc/mango/catalog.yaml (differs from repo example)" >&2
+    fi
     printf '%s\n' "$etc"
     return 0
   fi
@@ -33,13 +32,10 @@ resolve_catalog_filters() {
     printf '%s\n' "$MANGO_CATALOG_FILTERS"
     return 0
   fi
-  if [[ -f "$example" && -f "$etc" ]] && ! cmp -s "$example" "$etc"; then
-    echo "catalog: /etc/mango/catalog-filters.json differs from repo — using config/catalog-filters.example.json" >&2
-    echo "catalog: sync with: bash scripts/lib/sync-catalog-filters-etc.sh" >&2
-    printf '%s\n' "$example"
-    return 0
-  fi
   if [[ -f "$etc" ]]; then
+    if [[ -f "$example" ]] && ! cmp -s "$example" "$etc"; then
+      echo "catalog: using operator /etc/mango/catalog-filters.json (differs from repo example)" >&2
+    fi
     printf '%s\n' "$etc"
     return 0
   fi

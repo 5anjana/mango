@@ -44,18 +44,17 @@ play time and normal TTL maintenance revalidates the seed.
 | Host | Raspberry Pi 5, **8 GB**, active cooling |
 | Storage | 128 GB or larger A2 microSD; NVMe is optional |
 | OS | Raspberry Pi OS Desktop 64-bit, X11/Openbox |
-| User | **`aman`** |
+| User | couch account (`aman` or another dedicated user such as `mango2`) |
 | Repository | `~/mango`, branch `feat/native-experience` |
 | Display | HDMI; launcher runs at 1920×1080@60 |
 | Network | Wired Ethernet recommended |
 | Controller | One 8BitDo Micro, Switch mode |
 
-The `aman` username is currently mandatory. The pad launcher, pad systemd unit,
-controller supervisor, and several diagnostics contain `/home/aman`. Generalize
-those files before using another username.
-
-Use a unique hostname such as `mango-recipient`; do not create a second
-`mango.local` on the same network.
+The couch username is resolved at install time from `MANGO_TV_USER`, `SUDO_USER`,
+or the logged-in user. Generated systemd units use that account's home. Do not
+leave a donor pad MAC in active policy: set `MANGO_GAMEPAD_BT_MAC` to this
+device's controller. Use a unique hostname such as `mango-recipient`; do not
+create a second `mango.local` on the same network.
 
 ## Credential inventory
 

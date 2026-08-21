@@ -1905,10 +1905,10 @@ async function loadInfo(): Promise<void> {
     setText("launcher-url", `http://${info.ip}:${info.launcher_port}`);
     setText("companion-url", `https://${info.ip}:${info.companion_port}`);
   } catch {
-    setText("hostname", "mango");
-    setText("ip-address", "10.0.0.174");
-    setText("launcher-url", "http://10.0.0.174:3000");
-    setText("companion-url", "https://10.0.0.174:3001");
+    setText("hostname", "unavailable");
+    setText("ip-address", "unavailable");
+    setText("launcher-url", "unavailable");
+    setText("companion-url", "unavailable");
   }
 }
 

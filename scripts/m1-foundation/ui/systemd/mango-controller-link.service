@@ -5,9 +5,9 @@ Wants=bluetooth.service
 
 [Service]
 Type=simple
-Environment=MANGO_TV_USER=aman
-Environment=MANGO_GAMEPAD_BT_MAC=E4:17:D8:EB:00:44
-ExecStart=/usr/bin/python3 /home/aman/mango/scripts/m1-foundation/pad/mango-controller-link.py
+# Identity and MAC come from mango-controller-link.service.d/10-tv-user.conf,
+# written by install-controller-reliability.sh. Do not bake a donor user or MAC.
+ExecStart=/usr/bin/python3 -c "raise SystemExit('mango-controller-link: install drop-in 10-tv-user.conf first')"
 Restart=always
 RestartSec=2
 TimeoutStopSec=5

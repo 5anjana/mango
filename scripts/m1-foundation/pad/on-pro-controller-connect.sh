@@ -4,8 +4,11 @@
 
 set -euo pipefail
 
-USER_NAME="${MANGO_TV_USER:-aman}"
-HOME_DIR="/home/${USER_NAME}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../lib/mango-user.sh
+source "$SCRIPT_DIR/../../lib/mango-user.sh"
+USER_NAME="$(mango_tv_user)" || exit 1
+HOME_DIR="$(mango_tv_home "$USER_NAME")" || exit 1
 REPO="${HOME_DIR}/mango"
 LOCK="${HOME_DIR}/.cache/mango/pad-udev.lock"
 LOG="${HOME_DIR}/.cache/mango/pad-udev.log"

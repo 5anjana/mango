@@ -16,10 +16,18 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-TV_USER="${SUDO_USER:-aman}"
-TV_HOME="/home/${TV_USER}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../lib/mango-user.sh
+source "$SCRIPT_DIR/../../lib/mango-user.sh"
+TV_USER="${MANGO_TV_USER:-${SUDO_USER:-}}"
+TV_USER="$(MANGO_TV_USER="$TV_USER" mango_tv_user)" || exit 1
+TV_HOME="$(mango_tv_home "$TV_USER")" || exit 1
 REPO_DIR="${MANGO_REPO_DIR:-${TV_HOME}/mango}"
-BT_MAC="${MANGO_GAMEPAD_BT_MAC:-E4:17:D8:EB:00:44}"
+if [[ "$MODE" != "--rollback" ]]; then
+  BT_MAC="$(mango_gamepad_mac)" || exit 1
+else
+  BT_MAC="${MANGO_GAMEPAD_BT_MAC:-}"
+fi
 MAIN_CONF="/etc/bluetooth/main.conf"
 STATE_DIR="/etc/mango/controller-reliability"
 STATE_FILE="${STATE_DIR}/install-state.json"
@@ -121,10 +129,23 @@ Path(sys.argv[1]).write_text(json.dumps({
 PY
 }
 
+write_link_dropin() {
+  local drop_dir="/etc/systemd/system/mango-controller-link.service.d"
+  install -d -m 0755 "$drop_dir"
+  cat >"${drop_dir}/10-tv-user.conf" <<EOF
+[Service]
+Environment=MANGO_TV_USER=${TV_USER}
+Environment=MANGO_GAMEPAD_BT_MAC=${BT_MAC}
+ExecStart=
+ExecStart=/usr/bin/python3 ${REPO_DIR}/scripts/m1-foundation/pad/mango-controller-link.py
+EOF
+}
+
 apply() {
   check
   backup_and_patch_main_conf
   install -m 0644 "$UNIT_SRC" "$UNIT_DST"
+  write_link_dropin
   install -d -m 0755 -o "$TV_USER" -g "$TV_USER" "${TV_HOME}/.config/systemd/user"
   install -m 0644 -o "$TV_USER" -g "$TV_USER" "$PAD_UNIT_SRC" "$PAD_UNIT_DST"
   chmod +x \

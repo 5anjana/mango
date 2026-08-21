@@ -134,11 +134,9 @@ prove only their exact revision and contract.
   online-backup sets for progress, library, playability, and YouTube state. It
   publishes only after every present database passes `quick_check`, retains the
   newest three complete sets, and has no live-WAL plain-copy fallback.
-- **Optional Live currently poisons overall reliability.** Product policy makes
-  Live optional and excludes it from default gates, but the Reliability model
-  marks `live_config_ready=false` red and folds that component into overall red.
-  There is no intentionally-disabled-Live regression test. Until fixed, a
-  Live-off box can be falsely reported as not couch-ready.
+- **Optional Live is green when unconfigured.** Product policy makes Live
+  optional and excludes it from default gates. `live_config_ready=false` is now
+  a green/neutral component. Configured Live with no usable cache remains red.
 - **Resolver DTO sanitization is incomplete but couch compatibility failures are
   bounded.** At `2a93582`, `POST /play` converts internal ladder details to
   fixed aggregate counts/timing/categories and gate output allowlists that
@@ -649,9 +647,10 @@ maintenance, and recent proof. It records Green/Yellow/Red JSONL evidence with
 30-day retention and samples served titles. Home remains quiet except for a
 degraded Settings badge.
 
-Current implementation diverges from the optional-Live product contract:
-`live_config_ready=false` becomes a red component and therefore overall red.
-Treat this as a model defect, not proof that optional Live must be configured.
+Current implementation treats unconfigured Live as green/neutral. Configured
+Live with no usable cache remains red. The Settings controller-repair action is
+API/backend-only until the launcher renderer is reconciled. Five physical
+normal-wake cycles remain an acceptance gate.
 
 Safe repair is idle-only and state-preserving. The controller architecture is
 a root BlueZ link supervisor plus a user evdev router; normal controller power

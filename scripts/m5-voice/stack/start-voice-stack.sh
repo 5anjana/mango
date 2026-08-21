@@ -3,7 +3,11 @@
 
 set -euo pipefail
 
-REPO_DIR="${MANGO_REPO_DIR:-$HOME/mango}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="${MANGO_REPO_DIR:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+# shellcheck source=../../lib/mango-user.sh
+source "$REPO_DIR/scripts/lib/mango-user.sh"
+PHONE_URL="https://$(mango_pi_ip 2>/dev/null || echo 127.0.0.1):3001"
 cd "$REPO_DIR"
 mkdir -p "${HOME}/.cache/mango"
 
@@ -35,7 +39,7 @@ if start_via_systemd; then
   systemctl --user start mango-orchestrator.service mango-companion.service
   if wait_voice_healthy; then
     echo "✓ voice stack up (systemd: mango-orchestrator, mango-companion; launcher HUD only)"
-    echo "  phone: https://${MANGO_PI_IP:-10.0.0.174}:3001"
+    echo "  phone: ${PHONE_URL}"
     exit 0
   fi
   echo "voice systemd units started but health check timed out" >&2
@@ -58,7 +62,7 @@ tmux new-session -d -s mango-companion \
 
 if wait_voice_healthy; then
   echo "✓ voice stack up (tmux: mango-orch, mango-companion; launcher HUD only)"
-  echo "  phone: https://${MANGO_PI_IP:-10.0.0.174}:3001"
+    echo "  phone: ${PHONE_URL}"
   exit 0
 fi
 

@@ -122,6 +122,30 @@ test('catalog or launcher couch breakers make reliability red', () => {
   assert.equal(state.couch_message, 'Mango is not ready for couch use.');
 });
 
+test('intentionally unconfigured Live is green and does not make the box red', () => {
+  const facts = baseFacts();
+  facts.catalog.live_config_ready = false;
+  facts.catalog.live_cache_fresh = false;
+  facts.catalog.live_serving_stale = false;
+  facts.catalog.live_ready = false;
+  const state = evaluateReliability(facts);
+  const live = state.components.find((entry) => entry.id === 'live');
+  assert.equal(live?.status, 'green');
+  assert.match(live?.summary ?? '', /not configured/);
+  assert.notEqual(state.status, 'red');
+});
+
+test('configured Live with no usable cache remains red', () => {
+  const facts = baseFacts();
+  facts.catalog.live_config_ready = true;
+  facts.catalog.live_cache_fresh = false;
+  facts.catalog.live_serving_stale = false;
+  const state = evaluateReliability(facts);
+  const live = state.components.find((entry) => entry.id === 'live');
+  assert.equal(live?.status, 'red');
+  assert.equal(state.status, 'red');
+});
+
 test('thin library rails are yellow but still couch-usable', () => {
   const facts = baseFacts();
   facts.playability.thin_rails = [{ rail_id: 'series-india-picks', verified_pool: 5 }];

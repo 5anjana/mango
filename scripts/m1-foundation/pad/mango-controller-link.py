@@ -37,8 +37,16 @@ from controller_link_state import (
     LinkRetryState,
 )
 
-TV_USER = os.environ.get("MANGO_TV_USER", "aman")
-BT_MAC = os.environ.get("MANGO_GAMEPAD_BT_MAC", "E4:17:D8:EB:00:44").upper()
+TV_USER = os.environ.get("MANGO_TV_USER", "").strip()
+if not TV_USER or TV_USER in {"root", "unset"}:
+    raise SystemExit("mango-controller-link: set MANGO_TV_USER to the couch account")
+try:
+    pwd.getpwnam(TV_USER)
+except KeyError as exc:
+    raise SystemExit(f"mango-controller-link: unknown MANGO_TV_USER {TV_USER}") from exc
+BT_MAC = os.environ.get("MANGO_GAMEPAD_BT_MAC", "").strip().upper()
+if not BT_MAC:
+    raise SystemExit("mango-controller-link: set MANGO_GAMEPAD_BT_MAC to this device's 8BitDo MAC")
 ADAPTER_PATH = os.environ.get("MANGO_BT_ADAPTER_PATH", "/org/bluez/hci0")
 DEVICE_PATH = f"{ADAPTER_PATH}/dev_{BT_MAC.replace(':', '_')}"
 CACHE_DIR = Path(f"/home/{TV_USER}/.cache/mango")

@@ -146,22 +146,24 @@ export function evaluateReliability(facts: ReliabilityFacts): ReliabilityState {
     `core=${facts.catalog.core} rss=${facts.catalog.rss_mb ?? 'unknown'}MB`,
   ));
 
-  const liveStatus: ReliabilityLevel = facts.catalog.live_config_ready && facts.catalog.live_cache_fresh
+  const liveStatus: ReliabilityLevel = !facts.catalog.live_config_ready
     ? 'green'
-    : facts.catalog.live_config_ready && facts.catalog.live_serving_stale
-      ? 'yellow'
-      : 'red';
+    : facts.catalog.live_cache_fresh
+      ? 'green'
+      : facts.catalog.live_serving_stale
+        ? 'yellow'
+        : 'red';
   components.push(component(
     'live',
     'Live',
     liveStatus,
     liveStatus === 'green'
-      ? 'live config ready and cache fresh'
+      ? facts.catalog.live_config_ready
+        ? 'live config ready and cache fresh'
+        : 'live is not configured'
       : liveStatus === 'yellow'
         ? 'live config ready; serving stale cache while refresh retries'
-        : facts.catalog.live_config_ready
-          ? 'live config ready but no usable cache'
-          : 'live config unavailable',
+        : 'live config ready but no usable cache',
   ));
 
   const libraryStatus: ReliabilityLevel = !facts.playability.ok || facts.playability.verified_total < 9

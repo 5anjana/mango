@@ -28,7 +28,7 @@ done
 
 export DISPLAY="${DISPLAY:-:0}"
 export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
-export HOME="${HOME:-/home/aman}"
+export HOME="${HOME:-$(getent passwd "$(id -un)" | cut -d: -f6)}"
 
 prop() {
   local name="$1"

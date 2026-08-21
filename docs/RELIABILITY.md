@@ -18,12 +18,9 @@ actions live in Settings and in catalog-service APIs.
 | `yellow` | Mango is usable but needs attention: stale/missing proof, partial YouTube refresh, thin rails, disabled optional service, or active maintenance. |
 | `red` | Couch use is broken or blocked: launcher/catalog/controller unavailable, no displayable verified pool, Live has no ready/fallback cache, or stale locks block maintenance. |
 
-**Known model defect:** Live is a product-optional subsystem, but current source
-marks `live_config_ready=false` red and includes that component in overall
-status. An intentionally Live-off box can therefore be falsely labelled not
-couch-ready. Until the model and an explicit disabled-Live test are fixed, read
-that red component as a defect; configured Live with neither fresh nor safe
-stale cache should remain red.
+**Live is optional.** Unconfigured Live is green/neutral and does not make the
+box red. Configured Live with neither a fresh cache nor a safe stale fallback
+remains red.
 
 Nightly proof is availability-oriented. A rail missing `+20` is proof evidence
 and usually yellow, not red, unless it leaves the couch-visible pool unusable.

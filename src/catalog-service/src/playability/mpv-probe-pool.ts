@@ -2,6 +2,7 @@ import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseMpvSuccessOutput, type PlayResult } from '../mpv.js';
+import { mangoHome } from '../home.js';
 import { playabilityProbeConcurrency, playabilityUseProbePool } from './config.js';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -98,7 +99,7 @@ export async function releaseProbePoolLease(): Promise<void> {
 }
 
 function displayEnv(): NodeJS.ProcessEnv {
-  const home = process.env.HOME || '/home/aman';
+  const home = mangoHome();
   return {
     ...process.env,
     DISPLAY: process.env.DISPLAY || ':0',
