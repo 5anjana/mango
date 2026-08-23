@@ -13,6 +13,8 @@ import {
   streamMatchesMetaTitle,
   streamPassesIntegrity,
   trustedTitlesAreCompatible,
+  parseEpisodeIdentityMarker,
+  extractReleaseShowTitle,
   isSupplementalRelease,
   isPlausibleFeatureDuration,
   playMinDurationSec,
@@ -630,6 +632,109 @@ test('movie filename integrity rejects mislabeled torrent descriptions', () => {
   );
   assert.equal(result.streams.length, 1);
   assert.equal(result.streams[0]?.url, good.url);
+});
+
+test('AIOStreams emoji Sxx Exx still extracts the show title', () => {
+  const traitors: Stream = {
+    url: 'https://example.test/traitors.mkv',
+    source: 'AIOStreams',
+    name: '🚀 FHD',
+    title: '🚀 FHD',
+    description: '🎬 The Traitors 🍂 S01 🎞️ E01\n🎥 WEB-DL 🎞️ AVC',
+  };
+  assert.deepEqual(parseEpisodeIdentityMarker(String(traitors.description)), {
+    season: 1,
+    episode: 1,
+    strength: 'full',
+  });
+  assert.equal(extractReleaseShowTitle(traitors), '🎬 The Traitors 🍂');
+  assert.equal(
+    streamMatchesMetaTitle(traitors, 'The Traitors (IN)', 'tt33347879:1:1', {
+      contentType: 'series',
+      metaYear: 2025,
+      metaCountry: 'India',
+    }),
+    true,
+  );
+});
+
+test('regional Traitors India releases match The Traitors (IN)', () => {
+  const india: Stream = {
+    url: 'https://example.test/traitors-india.mkv',
+    source: 'AIOStreams',
+    name: '🚀 FHD',
+    description: '🎬 The Traitors India 🍂 S01 🎞️ E01\n🎥 WEB-DL 🎞️ AVC',
+  };
+  const uk: Stream = {
+    url: 'https://example.test/traitors-uk.mkv',
+    source: 'AIOStreams',
+    name: '🚀 FHD',
+    description: '🎬 The Traitors UK 🍂 S01 🎞️ E01\n🎥 WEB-DL 🎞️ AVC',
+    behaviorHints: { filename: 'The.Traitors.UK.2022.S01E01.1080p.WEB-DL.mkv' },
+  };
+  const context = {
+    contentType: 'series',
+    metaYear: 2025,
+    metaCountry: 'India',
+  } as const;
+  assert.equal(streamMatchesMetaTitle(india, 'The Traitors (IN)', 'tt33347879:1:1', context), true);
+  assert.equal(streamMatchesMetaTitle(uk, 'The Traitors (IN)', 'tt33347879:1:1', context), false);
+});
+
+test('AIOStreams emoji episode labels match any series title, including Must Go', () => {
+  const aioEpisode = (showTitle: string, season: number, episode: number, url: string): Stream => ({
+    url,
+    source: 'AIOStreams',
+    name: '🚀 FHD',
+    title: '🚀 FHD',
+    description: `🎬 ${showTitle} 🍂 S${String(season).padStart(2, '0')} 🎞️ E${String(episode).padStart(2, '0')}\n🎥 WEB-DL 🎞️ AVC`,
+  });
+  const mustGo = aioEpisode("Conan Obrien Must Go", 1, 1, 'https://example.test/must-go.mkv');
+  const office = aioEpisode('The Office (2005)', 1, 1, 'https://example.test/office.mkv');
+  const neighbors = aioEpisode('Your Friends And Neighbors', 1, 1, 'https://example.test/neighbors.mkv');
+  assert.equal(streamMatchesMetaTitle(mustGo, "Conan O'Brien Must Go", 'tt27790101:1:1', {
+    contentType: 'series',
+    metaYear: 2024,
+  }), true);
+  assert.equal(streamMatchesMetaTitle(office, 'The Office (US)', 'tt0386676:1:1', {
+    contentType: 'series',
+    metaYear: 2005,
+    metaCountry: 'United States',
+  }), true);
+  assert.equal(streamMatchesMetaTitle(neighbors, 'Friends', 'tt0108778:1:1', {
+    contentType: 'series',
+    metaYear: 1994,
+  }), false);
+  const ranked = filterAndRankStreams(
+    [mustGo, neighbors],
+    testConfig({ exclude_uncached_debrid: false }),
+    { contentType: 'series', metaTitle: "Conan O'Brien Must Go", metaId: 'tt27790101:1:1', metaYear: 2024 },
+  );
+  assert.equal(ranked.meta.excluded.title_mismatch, 1);
+  assert.deepEqual(ranked.streams.map((row) => row.url), [mustGo.url]);
+});
+
+test('talk-show air years inside a series run are not remake conflicts', () => {
+  const airYear: Stream = {
+    url: 'https://example.test/conan-2020.mkv',
+    source: 'AIOStreams',
+    name: '💿 HD',
+    description: '🎬 Conan (2020) 🍂 S10 🎞️ E01\n🎥 WEB-DL 🎞️ AVC',
+    behaviorHints: { filename: 'Conan.2020.S10E01.720p.WEB-DL.mkv' },
+  };
+  const wrongShow: Stream = {
+    url: 'https://example.test/without-borders.mkv',
+    source: 'AIOStreams',
+    name: '🚀 FHD',
+    description: '🎬 Conan Without Borders 🍂 S01 🎞️ E01\n🎥 WEB-DL 🎞️ AVC',
+  };
+  const context = {
+    contentType: 'series',
+    metaYear: 2010,
+    metaYearEnd: 2021,
+  } as const;
+  assert.equal(streamMatchesMetaTitle(airYear, 'Conan (2010)', 'tt1637574:10:1', context), true);
+  assert.equal(streamMatchesMetaTitle(wrongShow, 'Conan (2010)', 'tt1637574:1:1', context), false);
 });
 
 test('isCacheableStream rejects rate-limit placeholders', () => {

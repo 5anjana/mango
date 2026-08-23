@@ -941,6 +941,15 @@ function identityYear(value: unknown): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
+function identityYearEnd(value: unknown): number | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const years = [...String(value).matchAll(/\b((?:19|20)\d{2})\b/g)].map((match) => Number(match[1]));
+  if (years.length < 2) return undefined;
+  const start = years[0];
+  const end = years[years.length - 1];
+  return start !== undefined && end !== undefined && end >= start ? end : undefined;
+}
+
 function metaCountry(meta: Meta): string | undefined {
   for (const value of [meta.country, meta.countries, meta.originCountry]) {
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -3540,6 +3549,9 @@ export class CatalogCore {
           identityCertifiable,
           ...(identityCertifiable ? {
             metaYear: metadataYear ?? requestedYear,
+            metaYearEnd: identityYearEnd(meta.year)
+              ?? identityYearEnd(meta.releaseInfo)
+              ?? identityYearEnd(meta.released),
             metaCountry: metaCountry(meta),
             episodeTitle: type === 'series' ? metaEpisodeTitle(meta, id) : undefined,
             metaRuntimeMinutes: parseRuntimeMinutes(meta.runtime)

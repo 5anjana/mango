@@ -119,6 +119,8 @@ export type StreamFilterContext = {
   metaId?: string;
   /** Original release/start year used to distinguish same-name remakes. */
   metaYear?: number;
+  /** Series end year when known (2010–2021). Air years inside the run are not remakes. */
+  metaYearEnd?: number;
   /** Origin country used for explicit edition qualifiers such as UK/US. */
   metaCountry?: string;
   /** Expected series episode title (e.g. Downsize, not Pilot). */
@@ -185,7 +187,19 @@ function normalizeEditionAbbreviations(value: string): string {
   return value
     .replace(/\bU[\s._-]*S[\s._-]*A\b\.?/gi, ' USA ')
     .replace(/\bU[\s._-]*S\b\.?/gi, ' US ')
-    .replace(/\bU[\s._-]*K\b\.?/gi, ' UK ');
+    .replace(/\bU[\s._-]*K\b\.?/gi, ' UK ')
+    // Cinemeta regional marks: The Traitors (IN) → India edition, not the stop word "in".
+    .replace(/\(\s*IN\s*\)/gi, ' India ');
+}
+
+/** S01 E01 with dots, bullets, or AIOStreams decorative emoji between season and episode. */
+const SXX_EXX_RE = /\bs\s*(\d{1,2})\s*[^\p{L}\p{N}]{0,20}\s*e\s*(\d{1,3})\b/iu;
+const SXX_EXX_TEST_RE = /\bs\s*\d{1,2}\s*[^\p{L}\p{N}]{0,20}\s*e\s*\d{1,3}\b/iu;
+const NXN_RE = /\b(\d{1,2})\s*x\s*(\d{1,3})\b/i;
+const BARE_EPISODE_RE = /\b(?:ep|e)\s*[._\-\s]*(\d{1,3})\b/i;
+
+function hasEpisodeIdentityMarker(value: string): boolean {
+  return SXX_EXX_TEST_RE.test(value) || NXN_RE.test(value) || BARE_EPISODE_RE.test(value);
 }
 
 function identityWords(value: string): string[] {
@@ -262,7 +276,7 @@ function streamIdentityLabels(stream: Stream): string[] {
   const description = typeof stream.description === 'string' ? stream.description : '';
   add(description.match(/📁\s*([^\n\r]+)/)?.[1]);
   const firstLine = description.split(/\r?\n/)[0]?.replace(/^📁\s*/, '').trim() || '';
-  if (/(?:\bs\d{1,2}\s*[•·._\-\s]*e\s*\d{1,3}\b|\b\d{1,2}\s*x\s*\d{1,3}\b|\bep?\s*\d{1,3}\b)/i.test(firstLine)) add(firstLine);
+  if (hasEpisodeIdentityMarker(firstLine)) add(firstLine);
 
   const hints = stream.behaviorHints;
   const filename = hints && typeof hints === 'object' && !Array.isArray(hints)
@@ -272,7 +286,7 @@ function streamIdentityLabels(stream: Stream): string[] {
   add(filename);
 
   const label = `${stream.title || ''} ${stream.name || ''}`.trim();
-  if (/(?:\bs\d{1,2}\s*[•·._\-\s]*e\s*\d{1,3}\b|\b\d{1,2}\s*x\s*\d{1,3}\b|\bep?\s*\d{1,3}\b)/i.test(label)) add(label);
+  if (hasEpisodeIdentityMarker(label)) add(label);
   return labels;
 }
 
@@ -282,10 +296,10 @@ function stripReleaseIdentityJunk(value: string): string {
     // No trailing \b after ')' — end-of-string after a paren is not a word boundary.
     .replace(/\(\d{4}(?:\s*[–\-]\s*\d{4})?\)/g, ' ')
     .replace(/\b(?:19|20)\d{2}\b/g, ' ')
-    .replace(/\bs\d{1,2}\s*[•·._\-\s]*e\s*\d{1,2}\b.*/i, ' ')
-    .replace(/\bs\d{1,2}e\d{1,2}\b.*/i, ' ')
-    .replace(/\b\d{1,2}\s*x\s*\d{1,2}\b.*/i, ' ')
-    .replace(/\bep?\s*\d{1,3}\b.*/i, ' ')
+    .replace(/\bs\s*\d{1,2}\s*[^\p{L}\p{N}]{0,20}\s*e\s*\d{1,3}\b.*/iu, ' ')
+    .replace(/\bs\d{1,2}e\d{1,3}\b.*/i, ' ')
+    .replace(/\b\d{1,2}\s*x\s*\d{1,3}\b.*/i, ' ')
+    .replace(/\b(?:ep|e)\s*[._\-\s]*\d{1,3}\b.*/i, ' ')
     .replace(/\bseason\s*\d+\b.*/i, ' ')
     .replace(/\b(2160p|1080p|720p|480p|4k|uhd|web-?dl|bluray|remux|hevc|x265|x264|av1|hdr|dovi|atmos)\b.*/i, ' ')
     .trim();
@@ -303,11 +317,12 @@ export function extractReleaseShowTitle(stream: Stream): string | null {
   return null;
 }
 
-type Edition = 'uk' | 'us';
+type Edition = 'uk' | 'us' | 'india';
 
 function editionForAlias(token: string): Edition | null {
   if (token === 'uk' || token === 'gb') return 'uk';
   if (token === 'us' || token === 'usa') return 'us';
+  if (token === 'india' || token === 'indian') return 'india';
   return null;
 }
 
@@ -315,6 +330,7 @@ function metadataEdition(metaTitle: string, metaCountry?: string): Edition | nul
   const country = identityWords(metaCountry || '').join(' ');
   if (/\b(united kingdom|great britain|uk|gb)\b/.test(country)) return 'uk';
   if (/\b(united states|united states of america|us|usa)\b/.test(country)) return 'us';
+  if (/\b(india|indian)\b/.test(country)) return 'india';
   const titleWords = identityWords(metaTitle);
   if (titleWords.length > 1) {
     return editionForAlias(titleWords[titleWords.length - 1] || '');
@@ -335,7 +351,7 @@ function explicitReleaseYears(stream: Stream): Set<number> {
   const years = new Set<number>();
   for (const label of streamIdentityLabels(stream)) {
     const normalized = normalizeEditionAbbreviations(label);
-    const episodeMarker = normalized.search(/\bs\d{1,2}\s*[•·._\-\s]*e\s*\d{1,3}\b/i);
+    const episodeMarker = normalized.search(SXX_EXX_TEST_RE);
     const identityPrefix = episodeMarker >= 0 ? normalized.slice(0, episodeMarker) : normalized;
     for (const match of identityPrefix.matchAll(/\b((?:19|20)\d{2})\b/g)) {
       years.add(Number(match[1]));
@@ -358,9 +374,9 @@ function candidateEpisodeTitleTokens(stream: Stream): string[][] {
   const candidates: string[][] = [];
   for (const label of streamIdentityLabels(stream)) {
     const normalized = normalizeEditionAbbreviations(label);
-    const marker = normalized.match(
-      /(?:\bs\d{1,2}\s*[•·._\-\s]*e\s*\d{1,3}\b|\b\d{1,2}\s*x\s*\d{1,3}\b|\bep?\s*\d{1,3}\b)/i,
-    );
+    const marker = normalized.match(SXX_EXX_RE)
+      ?? normalized.match(NXN_RE)
+      ?? normalized.match(BARE_EPISODE_RE);
     if (!marker || marker.index === undefined) continue;
     let tail = normalized.slice(marker.index + marker[0].length)
       .replace(/\.(?:mkv|mp4|avi)$/i, ' ')
@@ -386,8 +402,8 @@ function validEpisodeNumber(value: string | undefined): number | null {
 
 /** Parse the episode marker forms used by Stremio providers and release names. */
 export function parseEpisodeIdentityMarker(value: string): EpisodeIdentityMarker | null {
-  const full = value.match(/\bs\s*(\d{1,2})\s*[•·._\-\s]*e\s*(\d{1,3})\b/i)
-    ?? value.match(/\b(\d{1,2})\s*x\s*(\d{1,3})\b/i);
+  const full = value.match(SXX_EXX_RE)
+    ?? value.match(NXN_RE);
   if (full) {
     const season = validEpisodeNumber(full[1]);
     const episode = validEpisodeNumber(full[2]);
@@ -395,7 +411,7 @@ export function parseEpisodeIdentityMarker(value: string): EpisodeIdentityMarker
       return { season, episode, strength: 'full' };
     }
   }
-  const bare = value.match(/\b(?:ep|e)\s*[._\-\s]*(\d{1,3})\b/i);
+  const bare = value.match(BARE_EPISODE_RE);
   const episode = validEpisodeNumber(bare?.[1]);
   return episode === null ? null : { season: null, episode, strength: 'bare' };
 }
@@ -489,7 +505,7 @@ export function streamHasExplicitIdentityConflict(
   metaId?: string,
   context: Pick<
     StreamFilterContext,
-    'contentType' | 'metaYear' | 'metaCountry' | 'episodeTitle'
+    'contentType' | 'metaYear' | 'metaYearEnd' | 'metaCountry' | 'episodeTitle'
   > = {},
 ): boolean {
   const haystack = streamRelevanceHaystack(stream);
@@ -507,14 +523,23 @@ export function streamHasExplicitIdentityConflict(
       }
     }
   }
-  if (context.metaYear) {
-    const releaseYears = explicitReleaseYears(stream);
-    if (releaseYears.size > 0 && !releaseYears.has(context.metaYear)) {
-      return true;
-    }
+  if (releaseYearContradictsMeta(explicitReleaseYears(stream), context)) {
+    return true;
   }
   return context.contentType === 'series'
     && streamEpisodeIdentityContradicts(stream, metaId);
+}
+
+function releaseYearContradictsMeta(
+  releaseYears: Set<number>,
+  context: Pick<StreamFilterContext, 'contentType' | 'metaYear' | 'metaYearEnd'>,
+): boolean {
+  if (!context.metaYear || releaseYears.size === 0) return false;
+  if (context.contentType === 'series') {
+    const end = context.metaYearEnd ?? Math.max(context.metaYear, new Date().getUTCFullYear());
+    return ![...releaseYears].some((year) => year >= context.metaYear! && year <= end);
+  }
+  return !releaseYears.has(context.metaYear);
 }
 
 /**
@@ -531,7 +556,12 @@ export function releaseShowTitleMatchesMeta(
   const titleCarriesEdition = metaWords.length > 1
     ? editionForAlias(metaWords[metaWords.length - 1] || '')
     : null;
-  const metaTokens = metaTitleTokensOrdered(metaTitle)
+  // Parenthetical years are remake keys, not title tokens (Conan (2010) vs Conan 2020).
+  const metaTokens = metaTitleTokensOrdered(
+    metaTitle
+      .replace(/\(\d{4}(?:\s*[–\-]\s*\d{4})?\)/g, ' ')
+      .replace(/\b(?:19|20)\d{2}\b/g, ' '),
+  )
     .filter((token) => !titleCarriesEdition || editionForAlias(token) !== titleCarriesEdition);
   if (metaTokens.length === 0) {
     return true;
@@ -563,7 +593,7 @@ export function streamMatchesMetaTitle(
   metaId?: string,
   context: Pick<
     StreamFilterContext,
-    'contentType' | 'metaYear' | 'metaCountry' | 'episodeTitle'
+    'contentType' | 'metaYear' | 'metaYearEnd' | 'metaCountry' | 'episodeTitle'
   > = {},
 ): boolean {
   const haystack = streamRelevanceHaystack(stream);
