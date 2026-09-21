@@ -121,6 +121,8 @@ export class DetailController {
   private origin: DetailOriginContext = { surface: "home" };
   /** Immutable owner captured when this Detail instance opened. */
   private personalizationOwner: PersonalizationOwner | null = null;
+  private detailHydrateTimer: number | undefined;
+  private detailHydrateAttempts = 0;
 
   constructor(
     private readonly view: HTMLElement,
@@ -311,6 +313,8 @@ export class DetailController {
     this.streamsWrap.hidden = true;
     this.episodesWrap.hidden = true;
     this.setListLabel("episodes");
+    this.clearDetailHydrate();
+    this.detailHydrateAttempts = 0;
     // The eyebrow echoes the rail label the card came from ("For You", "Top Picks");
     // preserve the catalog's casing rather than reformatting it.
     this.eyebrow.textContent = railLabel.trim();
@@ -403,6 +407,7 @@ export class DetailController {
     this.homeVisibleCards = [];
     this.relatedLoadToken += 1;
     this.origin = { surface: "home" };
+    this.clearDetailHydrate();
     this.view.classList.remove("detail--youtube");
     this.view.classList.add("hidden");
     this.callbacks.onClose(origin);
@@ -1488,6 +1493,7 @@ export class DetailController {
       }
       this.renderEpisodes(episodes, focusEpisodeId);
       this.updatePlayButtonLabel();
+      this.clearDetailHydrate();
       // Series never shows a stream list — playback resolves via /play (Phase A+B).
     } catch {
       if (this.episodesLoadToken !== token || !this.card || this.card.id !== card.id) {
@@ -1497,6 +1503,7 @@ export class DetailController {
       this.episodesWrap.hidden = true;
       this.seasonList.hidden = true;
       this.streamsWrap.hidden = true;
+      this.scheduleDetailHydrate(card);
     }
   }
 
@@ -1888,6 +1895,9 @@ export class DetailController {
       this.meta.textContent = detailMetaLine(meta, card);
       this.updateVerifyBadge(meta.in_library, meta.queued_for_verify);
       this.description.textContent = meta.description || card.description || "no synopsis available";
+      if (card.type !== "series" || this.seriesEpisodes) {
+        this.clearDetailHydrate();
+      }
       if (meta.poster) {
         this.poster.src = meta.poster;
         bindPosterImage(this.poster, meta.name || meta.title || card.title);
@@ -1900,14 +1910,42 @@ export class DetailController {
       }
     } catch {
       if (this.card?.id === card.id) {
-        this.description.textContent = card.description || "details unavailable";
+        this.description.textContent = card.description || "loading details…";
         const fallback = resolveCardPosterUrl(card, "large");
         if (fallback && !this.poster.src) {
           this.poster.src = fallback;
           bindPosterImage(this.poster, card.title);
         }
+        this.scheduleDetailHydrate(card);
       }
     }
+  }
+
+  private clearDetailHydrate(): void {
+    if (this.detailHydrateTimer !== undefined) {
+      window.clearTimeout(this.detailHydrateTimer);
+      this.detailHydrateTimer = undefined;
+    }
+  }
+
+  private scheduleDetailHydrate(card: ContentCard): void {
+    if (this.card?.id !== card.id || this.detailHydrateAttempts >= 8) {
+      if (this.card?.id === card.id && !card.description?.trim()) {
+        this.description.textContent = "details unavailable";
+      }
+      return;
+    }
+    this.clearDetailHydrate();
+    this.detailHydrateAttempts += 1;
+    this.detailHydrateTimer = window.setTimeout(() => {
+      if (!this.card || this.card.id !== card.id || this.card.type !== card.type) {
+        return;
+      }
+      void this.loadFullMeta(card);
+      if (card.type === "series" && !this.seriesEpisodes) {
+        void this.loadEpisodeList(card);
+      }
+    }, 1500 * this.detailHydrateAttempts);
   }
 
   private startNextPromptPoll(): void {

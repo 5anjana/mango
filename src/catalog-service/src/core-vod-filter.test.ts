@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { filterVodAddonExports, supportsResource } from './core.js';
+import { addonProvidesTitleMeta, filterVodAddonExports, supportsResource } from './core.js';
 import type { LiveRailConfig } from './live-rails.js';
 
 const liveConfig: LiveRailConfig = {
@@ -69,4 +69,11 @@ test('W2: VOD filtering keeps standalone stream providers and capability matchin
   assert.equal(supportsResource(vodTypes, 'stream', 'series'), true);
   assert.equal(supportsResource(vodTypes, 'stream', 'tv'), false);
   assert.equal(supportsResource(metadataOnly, 'stream', 'movie'), false);
+});
+
+test('addonProvidesTitleMeta keeps Cinemeta and AIOMetadata, skips stream catalogs', () => {
+  assert.equal(addonProvidesTitleMeta('Cinemeta'), true);
+  assert.equal(addonProvidesTitleMeta('AIOMetadata'), true);
+  assert.equal(addonProvidesTitleMeta('AIOStreams'), false);
+  assert.equal(addonProvidesTitleMeta('Bharat Binge'), false);
 });
