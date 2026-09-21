@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { ListSource, CandidateMeta } from './list-source.js';
+import type { ListSource, CandidateMeta, ListSourceFetchStats } from './list-source.js';
 import type { TitlePlayabilityRecord } from './db.js';
 import type { SourceCursorListSource } from './source-cursors.js';
 import {
@@ -8,6 +8,7 @@ import {
   ingestPaginatedCandidates,
   isRecentFailedTitle,
 } from './candidate-ingest.js';
+import { sourceCircuitDecision } from './grow-source-circuit.js';
 
 class MockListSource implements ListSource {
   readonly sourceId = 'mock';
@@ -64,6 +65,7 @@ test('ingestPaginatedCandidates pages past verified and failed to find fresh tit
       id: `seen-${index}`,
       status: index % 2 === 0 ? 'verified' : 'failed',
       fail_reason: 'timeout',
+      verified_at: index % 2 === 0 ? Date.now() - 60_000 : null,
       expires_at: Date.now() + 60_000,
       updated_at: Date.now(),
     });
@@ -115,6 +117,7 @@ test('ingestPaginatedCandidates can skip collecting active verified links during
         id: candidate.id,
         status: 'verified' as const,
         fail_reason: null,
+        verified_at: now - 60_000,
         expires_at: now + 60_000,
         updated_at: now,
       }])),
@@ -142,6 +145,101 @@ test('ingestPaginatedCandidates resets offset when catalog exhausted', async () 
   assert.equal(result.catalog_exhausted, true);
   assert.equal(result.next_offset, 0);
   assert.equal(result.fresh_queued, 2);
+});
+
+test('empty source suppression bounds repeated ingest loops and fetch calls', async () => {
+  class EmptySource implements ListSource, SourceCursorListSource {
+    readonly sourceId = 'composite';
+    readonly sourceType = 'composite_list' as const;
+    calls = 0;
+    private suppressed = new Set<string>();
+    private lastStats: ListSourceFetchStats[] = [];
+
+    listSourceKeys(): string[] {
+      return ['A:empty'];
+    }
+
+    readSourceOffsets(): ReadonlyMap<string, number> {
+      return new Map([['A:empty', 0]]);
+    }
+
+    writeSourceOffsets(): void {}
+
+    resetAllSourceOffsets(): void {}
+
+    setSuppressedSourceKeys(keys: ReadonlySet<string>): void {
+      this.suppressed = new Set(keys);
+    }
+
+    areAllSourcesExhausted(): boolean {
+      return this.suppressed.has('A:empty');
+    }
+
+    readLastSourceFetchStats(): ListSourceFetchStats[] {
+      return this.lastStats;
+    }
+
+    async candidates(options: { limit: number }): Promise<CandidateMeta[]> {
+      this.calls += 1;
+      this.lastStats = [{
+        source_key: 'A:empty',
+        source_label: 'A/empty',
+        requested: options.limit,
+        returned: 0,
+        errors: 0,
+        rate_limited: 0,
+        exhausted: false,
+      }];
+      return [];
+    }
+  }
+
+  const source = new EmptySource();
+  const aggregate = {
+    source_key: 'A:empty',
+    source_label: 'A/empty',
+    content_type: 'series',
+    scanned: 0,
+    fresh_queued: 0,
+    skipped_verified: 0,
+    skipped_recent_failed: 0,
+    linked_verified_seen: 0,
+    requested: 0,
+    returned: 0,
+    catalog_errors: 0,
+    rate_limited: 0,
+    exhausted: false,
+    verified: 0,
+    failed: 0,
+    theme_rejected: 0,
+  };
+  const suppressed = new Set<string>();
+
+  for (let loop = 0; loop < 3; loop += 1) {
+    source.setSuppressedSourceKeys(suppressed);
+    const result = await ingestPaginatedCandidates(source, {
+      startOffset: 0,
+      sourceOffsets: new Map([['A:empty', 0]]),
+      freshTarget: 1,
+      pageSize: 30,
+      maxScanned: 90,
+      lookupTitles: async () => new Map(),
+    });
+    for (const row of result.source_stats ?? []) {
+      aggregate.requested += row.requested;
+      aggregate.returned += row.returned;
+      aggregate.exhausted = aggregate.exhausted || row.exhausted;
+    }
+    const decision = sourceCircuitDecision(aggregate, { noVerifyScanLimit: 60 });
+    if (decision.suppress && decision.reason) {
+      suppressed.add('A:empty');
+    }
+  }
+
+  assert.equal(source.calls, 2);
+  assert.equal(aggregate.requested, 60);
+  assert.equal(aggregate.returned, 0);
+  assert.deepEqual([...suppressed], ['A:empty']);
 });
 
 test('ingestPaginatedCandidates does not reset source cursors on short composite page', async () => {
@@ -328,6 +426,7 @@ test('ingestPaginatedCandidates only bypasses tombstoned no_stream when explicit
         id: 'retry-me',
         status: 'failed',
         fail_reason: 'no_stream',
+        verified_at: null,
         expires_at: null,
         updated_at: now - 1000,
       }],
@@ -357,6 +456,7 @@ test('ingestPaginatedCandidates skips recent no_stream without explicit bypass',
         id: 'skip-me',
         status: 'failed',
         fail_reason: 'no_stream',
+        verified_at: null,
         expires_at: null,
         updated_at: now - 1000,
       }],
@@ -383,6 +483,7 @@ test('Q2: isRecentFailedTitle clears play_failure well before the generic no_str
       id: 'couch-fail',
       status: 'failed',
       fail_reason: 'play_failure',
+      verified_at: null,
       expires_at: null,
       updated_at: twoHoursAgo,
     }, now), false);
@@ -393,6 +494,7 @@ test('Q2: isRecentFailedTitle clears play_failure well before the generic no_str
       id: 'no-stream-fail',
       status: 'failed',
       fail_reason: 'no_stream',
+      verified_at: null,
       expires_at: null,
       updated_at: twoHoursAgo,
     }, now), true);
@@ -408,6 +510,7 @@ test('isRecentFailedTitle respects retry window', () => {
     id: 'x',
     status: 'failed',
     fail_reason: 'timeout',
+    verified_at: null,
     expires_at: null,
     updated_at: now - 1000,
   }, now), true);
@@ -416,6 +519,7 @@ test('isRecentFailedTitle respects retry window', () => {
     id: 'x',
     status: 'failed',
     fail_reason: 'no_stream',
+    verified_at: null,
     expires_at: null,
     updated_at: now - 8 * 24 * 60 * 60 * 1000,
   }, now), false);

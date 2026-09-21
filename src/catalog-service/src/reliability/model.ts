@@ -50,6 +50,22 @@ type RecommendationRefreshWarning = {
   reason: string;
 };
 
+type ProofMetadataWarning = {
+  warned: boolean;
+  summary: string;
+  reason: string;
+};
+
+type EvaluateReliabilityOptions = {
+  /**
+   * Metadata for a proof currently being recorded. When present, the proof
+   * component represents this fresh proof attempt instead of the previous
+   * ledger row, preventing a prior yellow proof from becoming self-sustaining
+   * evidence for the new proof.
+   */
+  currentProofMetadata?: Record<string, unknown>;
+};
+
 /**
  * The last nightly proof's metadata carries playability_rc/playability_ok/
  * failure_category (when the caller supplies them — see
@@ -87,6 +103,41 @@ function recommendationRefreshWarning(
   return { warned: true, reason: `recommendation_rc=${rc}` };
 }
 
+function proofRcWarning(
+  metadata: Record<string, unknown> | undefined,
+): ProofMetadataWarning {
+  const playabilityFailure = playabilityRefreshFailure(metadata);
+  if (playabilityFailure.failed) {
+    return {
+      warned: true,
+      summary: 'reported playability refresh problem; library growth may be stalled',
+      reason: playabilityFailure.reason,
+    };
+  }
+  const recommendationWarning = recommendationRefreshWarning(metadata);
+  if (recommendationWarning.warned) {
+    return {
+      warned: true,
+      summary: 'reported recommendation refresh warning; last-good may be serving',
+      reason: recommendationWarning.reason,
+    };
+  }
+  if (metadata) {
+    for (const [key, summary] of [
+      ['youtube_rc', 'reported YouTube refresh problem; YouTube rails may be stale'],
+      ['maintenance_rc', 'reported maintenance hook problem; maintenance may be incomplete'],
+      ['proof_rc', 'reported reliability proof command problem'],
+      ['broken_verified', 'reported broken served-title sample; playback proof needs attention'],
+    ] as const) {
+      const rc = metadata[key];
+      if (typeof rc === 'number' && Number.isFinite(rc) && rc !== 0) {
+        return { warned: true, summary, reason: `${key}=${rc}` };
+      }
+    }
+  }
+  return { warned: false, summary: '', reason: '' };
+}
+
 function worst(left: ReliabilityLevel, right: ReliabilityLevel): ReliabilityLevel {
   if (left === 'red' || right === 'red') return 'red';
   if (left === 'yellow' || right === 'yellow') return 'yellow';
@@ -103,7 +154,10 @@ function component(
   return { id, label, status, summary, ...(detail ? { detail } : {}) };
 }
 
-export function evaluateReliability(facts: ReliabilityFacts): ReliabilityState {
+export function evaluateReliability(
+  facts: ReliabilityFacts,
+  options: EvaluateReliabilityOptions = {},
+): ReliabilityState {
   const components: ReliabilityComponent[] = [];
 
   const stackProblems: string[] = [];
@@ -163,29 +217,34 @@ export function evaluateReliability(facts: ReliabilityFacts): ReliabilityState {
     `core=${facts.catalog.core} rss=${facts.catalog.rss_mb ?? 'unknown'}MB`,
   ));
 
-  const liveStatus: ReliabilityLevel = !facts.catalog.live_config_ready
+  const liveDisabled = facts.catalog.live_enabled === false;
+  const liveStatus: ReliabilityLevel = liveDisabled
     ? 'green'
-    : facts.catalog.live_cache_fresh
+    : facts.catalog.live_config_ready && facts.catalog.live_cache_fresh
       ? 'green'
-      : facts.catalog.live_serving_stale
+      : facts.catalog.live_config_ready && facts.catalog.live_serving_stale
         ? 'yellow'
         : 'red';
   components.push(component(
     'live',
     'Live',
     liveStatus,
-    liveStatus === 'green'
-      ? facts.catalog.live_config_ready
-        ? 'live config ready and cache fresh'
-        : 'live is not configured'
+    liveDisabled
+      ? 'live disabled'
+      : liveStatus === 'green'
+      ? 'live config ready and cache fresh'
       : liveStatus === 'yellow'
         ? 'live config ready; serving stale cache while refresh retries'
-        : 'live config ready but no usable cache',
+        : facts.catalog.live_config_ready
+          ? 'live config ready but no usable cache'
+          : 'live config unavailable',
   ));
 
-  const libraryStatus: ReliabilityLevel = !facts.playability.ok || facts.playability.verified_total < 9
+  const currentVerified = facts.playability.verified_distinct ?? facts.playability.verified_total;
+  const currentVisible = facts.playability.visible_total ?? facts.playability.verified_total;
+  const libraryStatus: ReliabilityLevel = !facts.playability.ok || currentVisible < 9
     ? 'red'
-    : facts.playability.thin_rails.length > 0
+    : currentVerified < 9 || facts.playability.thin_rails.length > 0
       ? 'yellow'
       : 'green';
   components.push(component(
@@ -194,12 +253,19 @@ export function evaluateReliability(facts: ReliabilityFacts): ReliabilityState {
     libraryStatus,
     libraryStatus === 'green'
       ? facts.playability.verified_distinct !== undefined
-        ? `${facts.playability.verified_distinct} distinct verified titles across ${facts.playability.rail_count} rails (${facts.playability.verified_total} rail placements)`
+        ? `${facts.playability.verified_distinct} current distinct verified titles across ${facts.playability.rail_count} rails (${facts.playability.verified_total} fresh rail placements, ${currentVisible} visible)`
         : `${facts.playability.verified_total} verified rail placements across ${facts.playability.rail_count} rails`
       : libraryStatus === 'yellow'
-        ? `${facts.playability.thin_rails.length} thin rails need growth`
+        ? facts.playability.thin_rails.length > 0
+          ? `${facts.playability.thin_rails.length} thin rails need growth`
+          : 'verified movie/TV proof needs refresh; visible library remains displayable'
         : 'verified movie/TV pool is not displayable',
-    facts.playability.error,
+    [
+      facts.playability.expired_verified && facts.playability.expired_verified > 0
+        ? `${facts.playability.expired_verified} expired verified rows excluded from current distinct proof`
+        : '',
+      facts.playability.error ?? '',
+    ].filter(Boolean).join('; ') || undefined,
   ));
 
   const youtubeStatus: ReliabilityLevel = !facts.youtube.enabled
@@ -245,32 +311,36 @@ export function evaluateReliability(facts: ReliabilityFacts): ReliabilityState {
   ));
 
   let proofStatus: ReliabilityLevel = 'yellow';
-  let proofSummary = 'no nightly proof recorded yet';
+  let proofSummary = 'no reliability proof recorded yet';
   let proofDetail: string | undefined;
-  if (facts.last_proof) {
+  if (options.currentProofMetadata) {
+    proofStatus = 'green';
+    proofSummary = 'current reliability proof uses fresh observations';
+    const currentWarning = proofRcWarning(options.currentProofMetadata);
+    if (currentWarning.warned) {
+      proofStatus = 'yellow';
+      proofSummary = currentWarning.summary;
+      proofDetail = currentWarning.reason;
+    }
+  } else if (facts.last_proof) {
     const ageMs = facts.generated_at - facts.last_proof.generated_at;
-    const playabilityFailure = playabilityRefreshFailure(facts.last_proof.metadata);
-    const recommendationWarning = recommendationRefreshWarning(facts.last_proof.metadata);
+    const proofWarning = proofRcWarning(facts.last_proof.metadata);
     if (ageMs > PROOF_STALE_MS) {
       proofStatus = 'yellow';
-      proofSummary = 'last nightly proof is stale';
+      proofSummary = 'last reliability proof is stale';
     } else if (facts.last_proof.status === 'red') {
       proofStatus = 'yellow';
-      proofSummary = 'last nightly proof failed; current state decides couch availability';
-    } else if (playabilityFailure.failed) {
+      proofSummary = 'last reliability proof failed; current state decides couch availability';
+    } else if (proofWarning.warned) {
       proofStatus = 'yellow';
-      proofSummary = 'last nightly playability refresh had a problem; library growth may be stalled';
-      proofDetail = playabilityFailure.reason;
-    } else if (recommendationWarning.warned) {
-      proofStatus = 'yellow';
-      proofSummary = 'last nightly recommendation refresh warned; last-good may be serving';
-      proofDetail = recommendationWarning.reason;
+      proofSummary = proofWarning.summary;
+      proofDetail = proofWarning.reason;
     } else {
       proofStatus = facts.last_proof.status;
       proofSummary = `last proof was ${facts.last_proof.status}`;
     }
   }
-  components.push(component('proof', 'Last Nightly Proof', proofStatus, proofSummary, proofDetail));
+  components.push(component('proof', 'Last Reliability Proof', proofStatus, proofSummary, proofDetail));
 
   const starvingRails = computeStarvingRails(facts.rail_growth.history)
     .filter((rail) => rail.nights_missed >= facts.rail_growth.threshold_nights);

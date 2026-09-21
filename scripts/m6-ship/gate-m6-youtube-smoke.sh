@@ -23,10 +23,17 @@ post_json() {
     "$CATALOG$path"
 }
 
+if [[ "${MANGO_YOUTUBE_GATE_SKIP_YTDLP_EXEC:-0}" == "1" ]]; then
+  echo "WARN: skipping executable yt-dlp/runtime checks (MANGO_YOUTUBE_GATE_SKIP_YTDLP_EXEC=1)" >&2
+fi
+
 curl -sf --max-time 5 "$CATALOG/health" >/dev/null
 
-state_json="$(curl_json "/youtube/state" 10)"
-python3 - "$state_json" <<'PY'
+state_json=""
+state_deadline=$((SECONDS + ${MANGO_YOUTUBE_STATE_FRESHNESS_WAIT_SEC:-5}))
+while true; do
+  state_json="$(curl_json "/youtube/state" 10)"
+  if ! state_status="$(python3 - "$state_json" "${MANGO_YOUTUBE_POT:-1}" <<'PY'
 import json
 import sys
 payload = json.loads(sys.argv[1])
@@ -45,7 +52,40 @@ expected = {
 }
 assert kind in expected, kind
 assert descriptor == expected[kind], (kind, descriptor)
+playback = payload.get("playback")
+if kind == "mango_wrapper":
+    assert isinstance(playback, dict), "YouTube playback runtime diagnostics are missing"
+    assert isinstance(playback.get("slot_revision"), str) and playback["slot_revision"], playback
+    assert playback.get("slot_channel") == "nightly", playback
+    assert playback.get("player_client_policy") == "upstream_default", playback
+    assert playback.get("canary") == "pass", playback
+    assert playback.get("fallback") == "none", playback
+    assert playback.get("ejs_ready") is True, playback
+    assert playback.get("js_runtime") == "deno", playback
+    if sys.argv[2] != "0":
+        if configured.get("pot_server_fresh") is not True:
+            print("pending")
+            raise SystemExit(0)
+        assert playback.get("pot_ready") is True, playback
+print("ok")
 PY
+)"; then
+    exit 1
+  fi
+  if [[ "$state_status" == "ok" ]]; then
+    break
+  fi
+  if [[ "$state_status" == "pending" && "$SECONDS" -lt "$state_deadline" ]]; then
+    sleep 0.25
+    continue
+  fi
+  if [[ "$state_status" == "pending" ]]; then
+    echo "FAIL: YouTube POT readiness probe is still pending" >&2
+    exit 1
+  fi
+  echo "FAIL: unexpected YouTube state validator result: ${state_status:-<empty>}" >&2
+  exit 1
+done
 
 yt_dlp_kind="$(
   python3 - "$state_json" <<'PY'
@@ -55,6 +95,7 @@ payload = json.loads(sys.argv[1])
 print(((payload.get("configured") or {}).get("yt_dlp_command_kind")) or "")
 PY
 )"
+if [[ "${MANGO_YOUTUBE_GATE_SKIP_YTDLP_EXEC:-0}" != "1" ]]; then
 case "$yt_dlp_kind" in
   yt_dlp)
     timeout 15 yt-dlp --version >/dev/null
@@ -78,6 +119,86 @@ case "$yt_dlp_kind" in
     exit 1
     ;;
 esac
+
+if [[ "$yt_dlp_kind" == "mango_wrapper" ]]; then
+  python3 "$REPO_ROOT/scripts/m6-ship/youtube-runtime-canary.py" \
+    --yt-dlp "$REPO_ROOT/scripts/m6-ship/youtube-yt-dlp.sh" \
+    --repo-root "$REPO_ROOT" \
+    --deno "${MANGO_DENO:-$HOME/.local/share/mango/deno/bin/deno}"
+fi
+
+if [[ "$yt_dlp_kind" == "mango_wrapper" && "${MANGO_YOUTUBE_POT:-1}" != "0" ]]; then
+  pot_url="${MANGO_YOUTUBE_POT_URL:-http://127.0.0.1:4416}"
+  pot_port="$(python3 - "$pot_url" <<'PY'
+import sys
+from urllib.parse import urlsplit
+parsed = urlsplit(sys.argv[1])
+assert parsed.scheme == "http"
+assert parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+print(parsed.port or 80)
+PY
+)"
+  pot_listeners="$(ss -ltnH "sport = :$pot_port")"
+  python3 - "$pot_listeners" "$pot_port" <<'PY'
+import re
+import sys
+
+listeners = [line for line in sys.argv[1].splitlines() if line.strip()]
+assert listeners, "YouTube POT provider has no listener"
+port = re.escape(sys.argv[2])
+for line in listeners:
+    assert re.search(rf"(?:127\.0\.0\.1|\[::1\]):{port}\b", line), (
+        "YouTube POT provider is not loopback-only"
+    )
+PY
+  python3 - \
+    "$REPO_ROOT/scripts/m6-ship/youtube-yt-dlp.sh" \
+    "${MANGO_DENO:-$HOME/.local/share/mango/deno/bin/deno}" \
+    "$REPO_ROOT/scripts/m6-ship/youtube-acceptance-corpus.json" \
+    "$pot_url" <<'PY'
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+corpus = json.loads(pathlib.Path(sys.argv[3]).read_text(encoding="utf-8"))
+video_id = next(
+    str(item["video_id"])
+    for item in corpus.get("items") or []
+    if isinstance(item, dict) and item.get("id") == "ordinary_vod"
+)
+try:
+    result = subprocess.run(
+        [
+            sys.argv[1],
+            "--ignore-config",
+            "--verbose",
+            "--no-playlist",
+            "--js-runtimes",
+            f"deno:{sys.argv[2]}",
+            "--extractor-args",
+            f"youtubepot-bgutilhttp:base_url={sys.argv[4]}",
+            "--simulate",
+            f"https://www.youtube.com/watch?v={video_id}",
+        ],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+except (OSError, subprocess.TimeoutExpired):
+    raise SystemExit("YouTube POT provider registration probe could not run") from None
+diagnostic = result.stderr + "\n" + result.stdout
+assert result.returncode == 0, "YouTube POT provider registration probe did not resolve"
+assert re.search(
+    r"PO Token Providers:.*bgutil:http-[^\s,]+ \(external\)",
+    diagnostic,
+), "yt-dlp did not register the supervised HTTP POT provider"
+PY
+fi
+fi
 
 rails_json="$(curl_json "/youtube/rails" 20)"
 python3 - "$rails_json" "$state_json" <<'PY'
@@ -421,32 +542,70 @@ def ipc(cmd):
     return json.loads(buf.decode())
 
 t0 = time.time()
-started = False
+ready = None
 for _ in range(40):
     time.sleep(0.5)
     if not os.path.exists(sock_path):
         continue
     try:
-        pt = ipc(["get_property", "playback-time"]).get("data")
-        if isinstance(pt, (int, float)) and pt >= 0.3:
-            started = True
+        sample = {
+            key: ipc(["get_property", key]).get("data")
+            for key in (
+                "playback-time", "audio-pts", "avsync",
+                "vo-configured", "estimated-vf-fps", "current-ao",
+                "vid", "aid", "mute", "pause",
+            )
+        }
+        numeric = all(
+            isinstance(sample[key], (int, float))
+            for key in ("playback-time", "audio-pts", "avsync", "estimated-vf-fps")
+        )
+        if (
+            numeric
+            and sample["vo-configured"] is True
+            and sample["estimated-vf-fps"] > 0
+            and isinstance(sample["vid"], int) and sample["vid"] > 0
+            and isinstance(sample["aid"], int) and sample["aid"] > 0
+            and sample["current-ao"] not in (None, False, "null")
+            and sample["mute"] is False and sample["pause"] is False
+            and abs(sample["avsync"]) <= 0.5
+        ):
+            ready = sample
             break
     except Exception:
         continue
-assert started, "YouTube play did not start on mpv socket"
+assert ready is not None, "YouTube play lacks conjunctive decoded A/V readiness"
+time.sleep(0.5)
+advanced = {
+    key: ipc(["get_property", key]).get("data")
+    for key in ("playback-time", "audio-pts", "avsync")
+}
+assert advanced["playback-time"] - ready["playback-time"] >= 0.2, (ready, advanced)
+assert advanced["audio-pts"] - ready["audio-pts"] >= 0.1, (ready, advanced)
+assert abs(advanced["avsync"]) <= 0.5, advanced
+initial_pt = ready["playback-time"]
 last = None
 deadline = t0 + 150
 while time.time() < deadline:
     time.sleep(10)
     pt = ipc(["get_property", "playback-time"]).get("data")
     aid = ipc(["get_property", "aid"]).get("data")
-    last = (pt, aid)
+    vo = ipc(["get_property", "vo-configured"]).get("data")
+    fps = ipc(["get_property", "estimated-vf-fps"]).get("data")
+    ao = ipc(["get_property", "current-ao"]).get("data")
+    avsync = ipc(["get_property", "avsync"]).get("data")
+    last = (pt, aid, vo, fps, ao, avsync)
     assert isinstance(pt, (int, float)) and pt >= 0, last
 assert last is not None, "YouTube play produced no samples"
-pt, aid = last
-assert pt >= 120, f"YouTube play died before 120s (playback-time={pt})"
+pt, aid, vo, fps, ao, avsync = last
+assert pt - initial_pt >= 120, (
+    f"YouTube play did not advance 120s (start={initial_pt}, playback-time={pt})"
+)
 assert aid not in (None, False, "no"), f"YouTube play has no audio (aid={aid})"
-print(f"youtube sustained play ok playback_time={pt:.1f}s aid={aid}")
+assert vo is True and isinstance(fps, (int, float)) and fps > 0, last
+assert ao not in (None, False, "null"), last
+assert isinstance(avsync, (int, float)) and abs(avsync) <= 0.5, last
+print(f"youtube sustained play ok playback_time={pt:.1f}s aid={aid} fps={fps} ao={ao}")
 PY
 fi
 

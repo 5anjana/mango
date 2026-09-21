@@ -22,6 +22,7 @@ function baseFacts(): ReliabilityFacts {
       ok: true,
       core: 'ready',
       rails_ready: true,
+      live_enabled: true,
       live_config_ready: true,
       live_cache_fresh: true,
       live_serving_stale: false,
@@ -44,6 +45,7 @@ function baseFacts(): ReliabilityFacts {
       ok: true,
       rail_count: 4,
       verified_total: 120,
+      visible_total: 120,
       thin_rails: [],
       last_indexer_run_at: now - 6 * 60 * 60 * 1000,
     },
@@ -122,19 +124,6 @@ test('catalog or launcher couch breakers make reliability red', () => {
   assert.equal(state.couch_message, 'Mango is not ready for couch use.');
 });
 
-test('intentionally unconfigured Live is green and does not make the box red', () => {
-  const facts = baseFacts();
-  facts.catalog.live_config_ready = false;
-  facts.catalog.live_cache_fresh = false;
-  facts.catalog.live_serving_stale = false;
-  facts.catalog.live_ready = false;
-  const state = evaluateReliability(facts);
-  const live = state.components.find((entry) => entry.id === 'live');
-  assert.equal(live?.status, 'green');
-  assert.match(live?.summary ?? '', /not configured/);
-  assert.notEqual(state.status, 'red');
-});
-
 test('configured Live with no usable cache remains red', () => {
   const facts = baseFacts();
   facts.catalog.live_config_ready = true;
@@ -148,11 +137,103 @@ test('configured Live with no usable cache remains red', () => {
 
 test('thin library rails are yellow but still couch-usable', () => {
   const facts = baseFacts();
-  facts.playability.thin_rails = [{ rail_id: 'series-india-picks', verified_pool: 5 }];
+  facts.playability.thin_rails = [{ rail_id: 'series-india-picks', verified_pool: 12, visible_pool: 5 }];
   const state = evaluateReliability(facts);
   assert.equal(state.status, 'yellow');
   assert.equal(state.ok, true);
   assert.match(state.components.find((entry) => entry.id === 'library')?.summary ?? '', /thin rails/);
+});
+
+test('low visible library pool is red even when strict verified proof exists', () => {
+  const facts = baseFacts();
+  facts.playability.verified_total = 120;
+  facts.playability.visible_total = 5;
+  const state = evaluateReliability(facts);
+  assert.equal(state.status, 'red');
+  assert.equal(state.ok, false);
+  assert.equal(state.components.find((entry) => entry.id === 'library')?.status, 'red');
+});
+
+test('disabled optional Live does not make overall reliability red', () => {
+  const facts = baseFacts();
+  facts.catalog.live_enabled = false;
+  facts.catalog.live_config_ready = false;
+  facts.catalog.live_cache_fresh = false;
+  facts.catalog.live_serving_stale = false;
+  facts.catalog.live_ready = false;
+  facts.catalog.live_stale_fallback = false;
+  const state = evaluateReliability(facts);
+  const live = state.components.find((entry) => entry.id === 'live');
+  assert.equal(live?.status, 'green');
+  assert.equal(live?.summary, 'live disabled');
+  assert.equal(state.status, 'yellow', 'missing proof remains yellow, but Live is not a red blocker');
+  assert.equal(state.ok, true);
+});
+
+test('configured Live without cache remains a red reliability blocker', () => {
+  const facts = baseFacts();
+  facts.catalog.live_enabled = true;
+  facts.catalog.live_config_ready = true;
+  facts.catalog.live_cache_fresh = false;
+  facts.catalog.live_serving_stale = false;
+  facts.catalog.live_stale_fallback = false;
+  const state = evaluateReliability(facts);
+  const live = state.components.find((entry) => entry.id === 'live');
+  assert.equal(live?.status, 'red');
+  assert.match(live?.summary ?? '', /no usable cache/);
+  assert.equal(state.status, 'red');
+  assert.equal(state.ok, false);
+});
+
+test('missing Live enabled fact is fail-safe red when config is unavailable', () => {
+  const facts = baseFacts();
+  delete (facts.catalog as Partial<typeof facts.catalog>).live_enabled;
+  facts.catalog.live_config_ready = false;
+  facts.catalog.live_cache_fresh = false;
+  facts.catalog.live_serving_stale = false;
+  facts.catalog.live_ready = false;
+  facts.catalog.live_stale_fallback = false;
+  const state = evaluateReliability(facts);
+  const live = state.components.find((entry) => entry.id === 'live');
+  assert.equal(live?.status, 'red');
+  assert.match(live?.summary ?? '', /config unavailable/);
+  assert.equal(state.status, 'red');
+});
+
+test('expired fresh proof with visible library is yellow but still couch-usable', () => {
+  const facts = baseFacts();
+  facts.playability.verified_distinct = 0;
+  facts.playability.expired_verified = 120;
+  facts.playability.verified_total = 0;
+  facts.playability.visible_total = 120;
+  const state = evaluateReliability(facts);
+  const library = state.components.find((entry) => entry.id === 'library');
+  assert.equal(library?.status, 'yellow');
+  assert.match(library?.summary ?? '', /proof needs refresh/);
+  assert.match(library?.detail ?? '', /expired verified rows excluded/);
+  assert.equal(state.ok, true);
+});
+
+test('known low current distinct proof is yellow when visible pool remains displayable', () => {
+  const facts = baseFacts();
+  facts.playability.verified_distinct = 8;
+  facts.playability.verified_total = 8;
+  facts.playability.visible_total = 120;
+  const state = evaluateReliability(facts);
+  assert.equal(state.components.find((entry) => entry.id === 'library')?.status, 'yellow');
+  assert.equal(state.ok, true);
+});
+
+test('old playability facts fall back to verified pool for visible availability', () => {
+  const facts = baseFacts();
+  delete (facts.playability as Partial<typeof facts.playability>).visible_total;
+  facts.playability.verified_total = 120;
+  const state = evaluateReliability(facts);
+  assert.equal(state.components.find((entry) => entry.id === 'library')?.status, 'green');
+
+  facts.playability.verified_total = 5;
+  const red = evaluateReliability(facts);
+  assert.equal(red.components.find((entry) => entry.id === 'library')?.status, 'red');
 });
 
 test('stale locks are red because they block maintenance', () => {
@@ -321,7 +402,7 @@ test('recommendation refresh warnings stay independent from playability publicat
   const state = evaluateReliability(facts);
   const proof = state.components.find((entry) => entry.id === 'proof');
   assert.equal(proof?.status, 'yellow');
-  assert.match(proof?.summary ?? '', /recommendation refresh warned/);
+  assert.match(proof?.summary ?? '', /recommendation refresh warning/);
   assert.match(proof?.detail ?? '', /recommendation_rc=10/);
 });
 

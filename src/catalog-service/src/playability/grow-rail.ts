@@ -6,6 +6,7 @@ import {
   getRailPoolTitleKeys,
   getTitlesPlayabilityBulk,
   getActiveRailCandidateRejectionKeys,
+  listActiveRailCandidateRejections,
   pruneNonPlayableFromRailPools,
   recordRailCandidateRejections,
   setRailIngestOffset,
@@ -83,6 +84,35 @@ import {
   sourceOffsetsForGrowOutcome,
 } from './grow-cursor-policy.js';
 import { createCandidateNormalizer } from './candidate-normalize.js';
+
+const JIOHOTSTAR_LATEST_SHOWS_SOURCE_KEY = 'AIOMetadata:mdblist.160359';
+
+type ActiveRailCandidateRejection = {
+  rail_id: string;
+  type: string;
+  id: string;
+  reason: string;
+  source_key: string | null;
+};
+
+function isJioHotstarLatestShowsCandidate(candidate: CandidateMeta): boolean {
+  return candidate.source_key === JIOHOTSTAR_LATEST_SHOWS_SOURCE_KEY
+    || (
+      candidate.source_addon === 'AIOMetadata'
+      && candidate.source_catalog === 'mdblist.160359'
+    );
+}
+
+export function shouldBypassActiveRailCandidateRejection(
+  railId: string,
+  candidate: CandidateMeta,
+  rejection: ActiveRailCandidateRejection | undefined,
+): boolean {
+  return railId === 'series-india-picks'
+    && rejection?.reason === 'theme_probe_skip'
+    && rejection.source_key === JIOHOTSTAR_LATEST_SHOWS_SOURCE_KEY
+    && isJioHotstarLatestShowsCandidate(candidate);
+}
 
 export type GrowRailResult = {
   rail_id: string;
@@ -508,6 +538,38 @@ export async function growRail(
     }), now);
   }
 
+  async function getActiveRejectionKeysForCandidates(
+    candidates: CandidateMeta[],
+  ): Promise<Set<string>> {
+    const rejectedKeys = await getActiveRailCandidateRejectionKeys(rail.id, candidates);
+    if (rejectedKeys.size === 0) {
+      return rejectedKeys;
+    }
+    const maybeJioHotstar = candidates.some((candidate) => (
+      rejectedKeys.has(candidateKey(candidate))
+      && isJioHotstarLatestShowsCandidate(candidate)
+    ));
+    if (!maybeJioHotstar) {
+      return rejectedKeys;
+    }
+    const activeRows = await listActiveRailCandidateRejections(rail.id);
+    const rejectionByKey = new Map(activeRows.map((row) => [
+      `${row.type}:${row.id}`,
+      row,
+    ]));
+    const filtered = new Set(rejectedKeys);
+    for (const candidate of candidates) {
+      const key = candidateKey(candidate);
+      if (!filtered.has(key)) {
+        continue;
+      }
+      if (shouldBypassActiveRailCandidateRejection(rail.id, candidate, rejectionByKey.get(key))) {
+        filtered.delete(key);
+      }
+    }
+    return filtered;
+  }
+
   function heartbeat(message: string, extra: Record<string, unknown> = {}): void {
     recordGrowRunState({
       phase: 'grow',
@@ -712,7 +774,7 @@ export async function growRail(
         break;
       }
 
-      const rejectedKeys = await getActiveRailCandidateRejectionKeys(rail.id, ingested.candidates);
+      const rejectedKeys = await getActiveRejectionKeysForCandidates(ingested.candidates);
       const sourceByCandidateKey = new Map<string, string>();
       const candidateByKey = new Map<string, CandidateMeta>();
       for (const candidate of ingested.candidates) {
@@ -901,6 +963,7 @@ export async function growRail(
   const freshVerified = strictFreshFromStatus(after);
   setGrowthPassFreshCount(growthPass, rail.id, freshVerified);
   const targetMet = freshVerified >= growTarget;
+  const sourceStatsRows = [...sourceStats.values()];
   if (sourceOffsets && isSourceCursorListSource(listSource)) {
     const offsetsToPersist = sourceOffsetsForGrowOutcome({
       targetMet,
@@ -909,6 +972,7 @@ export async function growRail(
       finalSourceOffsets: listSource.readSourceOffsets(),
       exhausted: catalogExhausted,
       candidatesSeen: totalCandidatesSeen,
+      sourceOutcomes: sourceStatsRows,
     });
     if (offsetsToPersist) {
       listSource.writeSourceOffsets(offsetsToPersist);
@@ -923,7 +987,6 @@ export async function growRail(
     await setRailIngestOffset(rail.id, ingestOffset);
   }
   const exhausted = !targetMet && catalogExhausted;
-  const sourceStatsRows = [...sourceStats.values()];
   const failureCategory = targetMet
     ? undefined
     : classifyGrowFailure({

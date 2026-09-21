@@ -6,7 +6,290 @@ Historical.
 
 **Branch:** `feat/native-experience` · **Roadmap:** [ROADMAP.md](ROADMAP.md) · **Acceptance:** [TESTING.md](TESTING.md)
 
-Latest recorded Pi deployment: **2026-08-21**,
+## Controller ordinary-wake follow-up — 2026-09-18
+
+The user reports that ordinary wake still fails after the September 17 repair;
+pairing-mode recovery remains necessary. That overrides any inference of
+physical success from the earlier automated checks.
+
+Live diagnosis found the bonded/trusted Micro advertises BlueZ
+`Input1.ReconnectMode=device`, while Mango repeatedly initiated host Connect
+and discovery. BlueZ's HID reconnect implementation only initiates automatic
+reconnection for `host`/`any`; it can reject incoming HID channels while an
+outgoing channel occupies the slot. The policy mismatch is confirmed; an actual
+channel collision during this user's wake attempt is not yet captured.
+
+Controller implementation/Pi evidence: `64e88ca45684223a5e056aa990a934383b55c4d5`.
+The correction follows the advertised mode, suppressing periodic host paging
+and discovery for `device`/`none`/unknown, refreshing metadata across BlueZ
+restarts, and exposing reconnect ownership in diagnostics. The Pi gate compares
+that state with the live HID contract. Bond, trust, and button mappings remain
+unchanged. Local and Pi controller suites passed **48/48**, and the updated
+live-mode/ownership/bond gate passed. Thirty one-second Pi observations retained
+one supervisor PID and fresh heartbeats with zero host attempts, discovery, or
+cancellation. BlueZ's prior repeated Host-is-down log stopped after activation.
+Unknown reconnect metadata and an indeterminate old host attempt report
+unhealthy rather than false readiness. Git deployment preserves operator-owned
+Companion state and addon configuration; no pairing or library reset occurred.
+
+**Physical normal-wake success and latency remain DEFERRED.** No ordinary wake
+was observed during this session's event capture. These checks prove removal of
+the wrong host behavior, not that no other controller/bond/radio issue remains.
+Five ordinary power-off/on cycles without pairing remain the release gate.
+
+## YouTube start and controller reconnect repair — 2026-09-17
+
+Recorded implementation/Pi playback evidence is bound to feature revision
+`0ba268f86f0887cc06fcdf42a6877d08f0461faf`. Documentation-only follow-ups do not
+change that implementation; deployment/gate output records the exact final HEAD.
+
+- **YouTube cause and repair:** decoded muted playback advanced about 0.9 seconds,
+  then a later check incorrectly required it remain within 0.75 seconds of the
+  original seek target. Handoff now retains each phase's proven paused position.
+  A second reproduced failure occurred when GPU reconfiguration internally sought
+  and left audio PTS at zero while paused. Bounded muted A/V advancement after
+  GPU activation now proves recovery before strict readiness and unmuted release.
+  Exact seek, decoded video, real audio output, synchronization, and deadline
+  guards remain; terminal evidence includes a sanitized handoff phase.
+- **Pi playback:** the previously failing music sample passed 135 seconds of
+  advancing 1080p playback at 23.976 fps, ALSA audio and near-zero A/V drift.
+  Fresh 1080p60 start and resume from 120 seconds each passed 20 seconds of
+  advancing A/V. Start totals were 13.58, 12.55 and 18.72 seconds respectively.
+  These are sampled-start/sustained checks, not all-video or frame-perfect proof:
+  the fresh software-VP9 60 fps sample added ten dropped frames; music and resume
+  added none after their initial samples. Physical picture/audio and opening
+  seconds remain **DEFERRED**.
+- **Controller:** timed-out Connect calls are cancelled before ownership is
+  released; generation fencing rejects late callbacks, forced retries preserve
+  singleflight, local discovery changes do not fabricate wake evidence, and
+  generic socket failures retain bounded discovery. Router readiness must be
+  fresh. Pi owner/bond/policy checks passed, and 40 seconds of observation found
+  fresh status and no discovery/Connect overlap. Paired/bonded/trusted state was
+  preserved. **Five physical normal-wake cycles and wake latency remain DEFERRED**;
+  `Connectable=false` alone was not a proven cause and was not changed.
+- **Local proof:** catalog 1,287/1,287; focused mpv policy 40/40; controller
+  state/supervisor/config 31/31; HUD, stream-picker and deploy-preflight gates passed.
+- **State preservation:** four databases were backed up and verified in the
+  separate `repairs-2026-09-17` backup directory. Companion files and addon export
+  hashes matched before/after deployment. No library, credential or bond reset.
+  Ordinary deploy backup retention rotated older routine snapshots; the separate
+  repair backup remains. Flirc planning/implementation remains paused.
+
+## Relocation release — 2026-09-11
+
+Library/playability feature revision:
+`d30445851b50659d712537341a23c023f6117d86`, `feat/native-experience`.
+The release includes reliability-reporting and documentation follow-ups;
+the final Pi gate prints and checks its exact deployed HEAD against origin.
+Recorded runtime proof below is explicitly bound to `3759646` / `02d55d1`.
+Final follow-up evidence is captured separately on the workstation in
+`/tmp/mango-release-final-pi-gate.log` and
+`/tmp/mango-release-final-targeted.log`; read their result and SHA header rather
+than attributing older samples to a later revision.
+Git-only deployment and all three Pi builds passed at `02d55d1`; operator-owned
+Companion state remains preserved. **Standard and full Pi pre-couch gates passed
+at `3759646`; bounded-retry maintenance and Traitors S2E2–E5 playback passed at `02d55d1`.**
+
+- **Library preservation:** schema 21 is deployed. The guarded recovery restored
+  **6,440** baseline-proven expiry-only titles without renewing verification
+  dates. Immediately afterward, **9,275** canonical movie/show identities were
+  visible and **2,834** had unexpired proof. All **31,095** title records remained;
+  Saved, ratings, Takeout, overlays, watch state, and watch history hashes matched
+  before playback testing. A private pre-apply SQLite rollback snapshot exists.
+- **Failure policy:** expiry alone retains last-known-good visibility; actual
+  overall failure hides and queues the exact title/episode. Cancellation and a
+  successful stream fallback do not demote it. Nightly admission reserves half
+  for expiry rechecks, with remaining/unused time available for discovery.
+- **Traitors India S2E1:** provider comparison found a correctly scoped but
+  edition-unlabelled Hindi release among foreign editions. Container runtime
+  75:30, release date, programme branding, and subtitle evidence support India.
+  A content-confirmed exact episode/filename exception now admits one candidate;
+  it does not trust other episodes, Hindi flags, or a release group generally.
+  Separate fixes admit explicit India season-pack labels and the exact episode's
+  metadata release year. Foreign-edition and wrong-episode conflicts remain blocked.
+  Direct Pi playback passed on its first attempt (**11,491 ms** total,
+  **6,000 ms** first frame), with advancing position and 4,530.048-second runtime.
+  S2E2–E5 now have separately content-confirmed exact filename entries: Hindi
+  audio, episode-specific runtime/release dates, programme text and S2 cast
+  references (including Harman/Soundous in E4). All four actual app playback
+  checks passed at `02d55d1`, one attempt each: E2 16,264 ms, E3 12,416 ms,
+  E4 10,904 ms, E5 11,401 ms; all had advancing video and matching runtimes.
+  E6's similar candidate timed out during media inspection and is
+  not admitted. S2E7–E11 had no identifying India
+  candidate in the normal response. Ephemeral E7/E11 canaries raised AIO's
+  global cap 12→60 and enabled the already-configured Easynews fallback: more
+  rows appeared, but none established India identity. No provider configuration
+  was persisted. This is not a claim that the rest of S2 is unavailable globally.
+- **Recommendations:** the live manual refresh at `c4c61d1` completed movie
+  revision **34** at rank **331**, and series revision **50** at rank **332**.
+  Both job receipts record their exact activated rank; neither revision remains
+  pending. Enqueue alone is not treated as completion.
+  The later bounded maintenance's exact jobs also completed: movie desired
+  revision **37** at rank **336**, series desired revision **54** at rank **337**.
+- **YouTube diagnostics:** local loopback probing no longer uses the mutable
+  Stremio fetch shim. The probe now starts after synchronous status assembly
+  yields, preventing that work from consuming its own 250 ms timeout.
+  The opt-in sustained playback gate passed at **154.5 seconds**, active audio,
+  30 fps, ALSA, and conjunctive A/V readiness. Required resolver canaries **7/7**
+  passed; one optional canary reported a transport failure.
+- **Runtime health:** both SQLite quick checks passed with zero foreign-key
+  violations. Warm cached rails measured about 59–66 ms, YouTube state 54–62 ms,
+  and health 6–56 ms. One playback-time sample had a 4.06-second health response
+  and a now-playing timeout; a subsequent 45-second sample did not reproduce it
+  (health 1.6–8.9 ms, active now-playing about 87–120 ms). This intermittent stall
+  remains an observation to monitor, not a proven fixed defect.
+- **Local validation:** catalog **1,255/1,255**, including bounded/durable trigger
+  draining, exact release identity,
+  episode metadata-year, receipt acknowledgement, fixture isolation, and
+  event-loop starvation regressions. The earlier launcher **143/143**, UI server
+  **18/18**, restoration **15/15**, and prune-report **4/4** checks remain recorded
+  source evidence, not substitutes for final Pi gates.
+- **Pi standard gate:** **766/766** catalog unit tests, gate-lite, UX, voice,
+  playback state, 4K/HDR profile, YouTube smoke, and stream-picker gates passed.
+  The served-title resolver sample had **0 broken / 32 sampled**. Reliability
+  remained usable-yellow for historical nightly proof and two rail-growth trends.
+  The later complete standard gate at `fa6aa68` passed **768/768** Pi catalog
+  tests and all integration checks. Its resolver sample again had **0/32**
+  broken titles. Separate exact-SHA targeted checks passed **25/25**, accepted
+  all 24 formerly rejected JioHotstar candidates for normal theme admission,
+  retained the foreign-title exclusion, and resolved exactly one stream for
+  each Traitors India S2E1–E5.
+- **Pi full sample:** the unmodified three-per-rail VOD sample passed
+  **36/36** actual plays; the complete full pre-couch gate passed. Additional
+  browse-to-play samples passed (movie 12,051 ms/one attempt; series 39,603 ms/two
+  attempts; reference movie 14,923 ms/one attempt). These are sampled starts,
+  not a guarantee that every title starts immediately or every full video plays.
+- **Live TV:** all four normal app playback samples passed: cricket, racing,
+  news, and cartoons. This is sampled-start proof, not all-channel verification.
+- **Maintenance follow-up:** an actual catch-up exposed an unbounded pre-stage
+  failed-play trigger drain. Its exact hook subprocess was stopped; the owning
+  coordinator completed publication and couch restoration. The fix now shares
+  the stale admission deadline, saves each completed trigger group immediately,
+  and leaves unstarted titles queued. Local deadline/entrypoint tests and
+  independent review passed. The subsequent bounded run succeeded: its live
+  hook checked 34 titles (29 verified, 5 failed), yielded at the stale admission
+  deadline and retained unstarted retries. Discovery gained **20 fresh proof
+  rows**, including series gate-episode rows, with zero pruned pool entries.
+  Publication readback matched the staged DB, schema 21, quick check OK and no
+  foreign-key errors. All six user-state hashes remained unchanged. The live
+  readback had **31,119** title records, **9,281** visible canonical movie/show
+  identities and **2,870** freshly verified canonical identities.
+  The preceding run preserved all six user-state hashes and retained 31,111 title records.
+  Its grow phase added no verified titles; a successful publication is not a
+  successful growth claim. The two runs' backup retention replaced two older prepublication
+  snapshots, while the independent full rollback backup remains preserved.
+- **Discovery follow-up:** a real candidate audit found the exact source label
+  `JioHotstar` was not matching separate `jio`/`hotstar` theme tokens. The narrow
+  source-only normalization and exact affected-source rejection-cache retry
+  passed local tests and independent review. Normal theme and stream identity
+  checks still apply; no global cursor reset or provider expansion was made.
+- **Reliability proof follow-up:** the last remaining yellow warning was
+  self-referential: each new proof inherited the previous proof's yellow status.
+  New proof evaluation now uses fresh observations and current failure metadata;
+  it does not erase ledger history or suppress current component failures.
+  The display label is now “Last Reliability Proof,” since manual/gate records
+  are not evidence of an unattended nightly run. The targeted follow-up log
+  above records the final deployed check of this diagnostic-only change.
+
+Ethernet, `America/New_York`, synchronized NTP, user-service lingering, and the
+03:00 local nightly timer were checked live. OS updates still require the
+operator's administrator authentication. Physical picture/audio/lip-sync,
+controller wake/feel, and repeated unattended nights remain **DEFERRED**.
+
+## Historical relocation health audit — 2026-09-11
+
+Repair deployment readback: `4554c0a6cf6f1d79d58f9bb1d5afbe0441462fe9` on
+`feat/native-experience`. Ethernet is connected, timezone is
+`America/New_York`, and NTP is synchronized. The catalog, recommendation
+worker, and launcher are active. Operator-owned Companion changes are preserved.
+
+**Repair status: Pi-deployed; maintenance and final gates in progress.** The
+initial identity/diagnostic readbacks below passed; they are not the full
+release gate. Additional local follow-ups have not yet been deployed.
+
+- **YouTube:** reconnection and all refresh phases passed live. The opt-in
+  sustained playback gate passed with 154 seconds of advancing video, active
+  audio, and A/V readiness. A sampled frame check reported 1920×1080 with no
+  dropped frames. Picture/audio/lip-sync judgment remains couch-deferred.
+- **Traitors India S2E1:** the episode exists in metadata, but current AIO
+  results are foreign editions or lack identifying edition evidence. Exact
+  edition rules are deployed; the live request returns zero accepted streams
+  instead of substituting those releases. Correct Indian-edition availability
+  and playback remain unproven.
+- **Identity and expiry:** the audit found duplicate movie/series identities
+  and thousands of expired verification rows. Deployed repairs tighten collision
+  handling and report only unexpired verification as current proof. A staged
+  maintenance catch-up and publication readback are still required.
+- **Efficiency and unattended recovery:** deployed repairs remove synchronous
+  Reliability Center subprocess probes, bound empty-source growth work,
+  protect action admission from cached idle state, recover interrupted receipts
+  under the maintenance lock, and stop missing recommendation receipts from
+  reporting success. Exhausted empty sources return to the first page on the next
+  pass without resetting healthy source cursors or mistaking rate limits for
+  catalog exhaustion. VOD ranking remains asynchronous; enqueue is not completion.
+- **Display and configuration:** deployed repairs zero idle DPMS timers and fix
+  wake-command ordering; this is not implementation of the deferred display
+  sleep/CEC feature. AIOMetadata synchronization remains opt-in, with private,
+  cleaned temporary files and atomic credential updates in its helper.
+
+Initial Pi readbacks: playability schema **20**, zero simultaneously verified
+bare movie/series identity collisions, YouTube renewable authentication without
+reconnect required, and all idle DPMS timers **0** / **disabled**. A cold
+Reliability read took 1.91 seconds while a concurrent `/health` completed in
+**2.9 ms** (pre-repair concurrent health stalled for about 2.24 seconds).
+User-service lingering is enabled. The 03:00 playability and 06:00 Companion
+timers use the current Eastern timezone. The interrupted pre-move maintenance
+receipt is preserved as failed/interrupted by the new coordinator.
+
+Local validation: catalog **1203/1203**, launcher **142/142**, launcher and
+Companion builds, UI pad queue **10/10**, contextual controller **10/10**, HUD
+contract **10/10**, display ordering **3/3**, and the library-grow, stream-picker,
+maintenance recovery, AIOMetadata, and deployment-preflight suites passed.
+
+Follow-up release preparation adds bounded asynchronous YouTube status probes,
+allocated/active/retained recommendation diagnostics, optional-Live health parity,
+literal-only maintenance profile lookup, a reserved nightly stale-check budget,
+native dependency cache invalidation on ABI changes, and hostname-based relocation
+fallbacks. Clean dependency installs pass; npm audit reports **zero** findings in
+each of catalog, launcher, and Companion. These dependency audits do not certify
+the operating system: Pi admin authentication is still required to refresh and
+apply OS security updates, and the installed Debian Node runtime has unresolved
+[security-tracker issues](https://security-tracker.debian.org/tracker/source-package/nodejs). Platform changes have not been silently bundled into the
+application release.
+
+Follow-up local validation: catalog **1210/1210**, launcher **143/143**, UI
+server **18/18**, native dependency fingerprint **6/6**, all three package
+builds, optional-Live parity, YouTube smoke fixtures, maintenance profile and
+deadline/recovery, and deployment-hardening checks pass. Pi proof is still pending.
+
+The prior deployed evidence below is **historical**, not a sign-off for the
+relocation repairs. Full couch acceptance and repeated unattended nights remain
+**DEFERRED**.
+
+### Approved library visibility follow-up — source implementation
+
+Expiry alone retains last-known-good browse and recommendation eligibility;
+strict fresh-proof counts remain separate. An overall unsuccessful play hides
+and queues the affected title or exact episode, including transient failures.
+Cancellation and successful stream fallback do not count as overall failures.
+Nightly admission reserves half its budget for expired-title rechecks and uses
+the remainder for discovery, preferring existing recent-title feeds. Saved,
+ratings, viewing history, and title records are not deleted by this policy.
+
+Schema 21 makes expiry-marker changes advance the recommendation corpus.
+Refresh receipts now bind atomically to the actual desired revision and semantic
+generation, including concurrent-worker guards. A guarded recovery utility can
+restore visibility only for baseline-proven expiry-only demotions without
+renewing verification dates; application and Pi proof are pending.
+
+Local validation for this follow-up: catalog **1240/1240**, launcher
+**143/143** plus build, UI server **18/18**, the full library-grow regression
+gate, guarded restoration **15/15**, and pruning-report tests **4/4** pass.
+Exact-episode S1E1 retry and direct/batched show-gate boundaries are covered.
+
+## Historical recorded Pi deployment — 2026-08-21
+
+Previously recorded Pi deployment: **2026-08-21**,
 `d09f4dc493e58d7575809f6e0d014340d1430384`. The Trustworthy Recommendation
 Refactor is deployed and the exact-SHA pre-couch gate passes. A full staged
 nightly at `6d5d479` (the same recommendation/playability code) passed
@@ -25,7 +308,7 @@ evidence. Human couch verdict remains **DEFERRED** for picture, audio,
 lip-sync, controller feel, recommendation relevance, and VOD poster fill.
 Use `git status`, `git rev-parse HEAD`, and the Pi commands below before acting.
 
-## Current deployed source — 2026-08-21 (Trustworthy Recommendation Refactor)
+## Historical deployed source — 2026-08-21 (Trustworthy Recommendation Refactor)
 
 **Evidence level:** source-complete + local-pass + Pi-deployed + Pi-gated.
 **Not couch-observed.** Final tested Pi SHA:

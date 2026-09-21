@@ -100,15 +100,19 @@ via `MANGO_MPV_BLEND_SUBTITLES`.
 **Deferred foreground handoff.** When `MANGO_MPV_DEFER_FOREGROUND=1` (default
 when `MANGO_MPV_STOP_LAUNCHER=1`, set by `mpv`/`mpv-hifi` profiles), `mpv-play.sh`
 keeps the Chromium launcher visible while mpv buffers. **Every non-live VOD**
-(movies, series, and YouTube, including split A/V) uses the null-VO/null-AO
-buffer path (`needs_vo_null_buffer`) so no browse-res frame is shown before the
-panel is source-matched. Foreground ownership is committed only after mpv proves
-real, advancing, feature-length playback. It then waits for
+(movies, series, and YouTube, including split A/V) uses the null-VO buffer path
+(`needs_vo_null_buffer`) so no browse-res frame is shown before the panel is
+source-matched. YouTube opens the final HDMI AO muted from startup; it cannot
+substitute absolute resume position or audio-only movement for a decoded video
+frame. Foreground ownership is committed only after advancing A/V clocks,
+configured null VO, decoder FPS, selected tracks, real AO, and bounded A/V sync
+are proved together. It then waits for
 `demuxer-cache-duration` to meet a ladder-aware threshold (18s for 4K REMUX),
 with a bounded time fallback for valid transports where mpv cannot report that
-property, before it runs hide → black → HDMI match → **enable GPU VO and
-configured/automatic AO on the matched panel** → raise mpv (never match while
-the launcher is mapped). Rejected candidates and every probe remain
+property. YouTube then pauses → exact-seeks and reproves A/V while the launcher
+is visible → hides → paints black → matches HDMI → enables GPU VO → reproves A/V
+→ raises → unmutes/unpauses → proves all clocks advancing. Other VOD restores
+configured/automatic AO on the matched panel. Rejected candidates and every probe remain
 display-neutral; they cannot hide, repaint, mode-switch, or restore the
 launcher. Enabling the VO
 *before* the match is what caused the "video plays → flash → black → 4K" start on
@@ -412,10 +416,20 @@ recommendation rails; neither invokes a deleted allocator.
 The YouTube Data API is used for exact authorized-channel identity, metadata,
 search, authoritative subscription refresh, and official channel upload
 playlists only.
-Playback resolves with `yt-dlp -g` (`player_client=web_safari,tv_simply`),
-one hard-capped `height<=1080` HLS-first/https-DASH selector, then mpv
-`--ytdl=no`. Lower operator caps remain valid; configuration cannot raise the
-ceiling or add a sequential quality ladder. API quota does not govern cached
+Playback resolves with canaried nightly `yt-dlp -g` defaults and a hard
+`height<=1080` cap: seekable HTTPS DASH first for VOD, while a result identified
+as live is re-resolved with an HLS-only selector before playback. It then uses
+mpv `--ytdl=no`. Mango never
+pins player clients: candidate runtimes must resolve and read real transports
+before atomic promotion, and the previous canaried slot remains available for
+fallback inside the original resolve deadline. The promotion canary requires
+all available sampled current-rail titles plus stable VOD, music, and channel-resolved
+live-HLS controls; upstream-fragile content classes are visible advisories.
+The explicit PO-token provider is supervised and loopback-only. Public videos
+resolve anonymously first; configured cookies are used only for an
+account-required or explicit bot sign-in retry. Lower operator caps remain valid;
+configuration cannot raise the ceiling or add a sequential quality ladder. API
+quota does not govern cached
 playback. Classified outcomes include unavailable, geo, DRM,
 entitlement, rate-limit, and player failure. Channels and playlists open
 detail lists; only videos can be Saved in M6.2.

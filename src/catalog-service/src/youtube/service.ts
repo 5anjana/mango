@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { CatalogError } from '../catalog-errors.js';
 import { playUrl } from '../mpv.js';
@@ -30,6 +30,7 @@ import {
   listYoutubeItems,
   listYoutubeV2ImportedHistory,
   listYoutubeV2Subscriptions,
+  latestYoutubeV2GenerationRailSummary,
   latestYoutubeV2GenerationRecord,
   listYoutubeV2ActiveCandidateIds,
   replaceYoutubeV2Subscriptions,
@@ -40,6 +41,7 @@ import {
   upsertYoutubeV2CandidateProvenance,
   upsertYoutubeItems,
   youtubeV2ServingEpoch,
+  youtubeV2CandidateProvenanceSummary,
   youtubeCacheSummary,
   youtubeRefreshStatus,
   YOUTUBE_DAILY_SEARCH_CALL_BUDGET,
@@ -55,7 +57,7 @@ import {
   youtubePlayStartDisposition,
   type YoutubeResolvedPlayback,
 } from './playback.js';
-import { readYoutubeRuntimeSnapshot, youtubeRuntimeDiagnostics } from './runtime.js';
+import { probeYoutubePotReady, readYoutubeRuntimeSnapshot, youtubeRuntimeDiagnostics } from './runtime.js';
 import type {
   YoutubeItem,
   YoutubeItemKind,
@@ -158,57 +160,143 @@ function youtubeYtDlpDiagnostic(command: string): {
   return { yt_dlp_command: '', yt_dlp_command_kind: 'custom' };
 }
 
-let cachedYtDlpVersion: { command: string; version: string | null } | null = null;
+type YoutubeProbeSnapshot<T> = {
+  value: T;
+  fresh: boolean;
+  checked_at: number | null;
+};
 
-function youtubeYtDlpVersion(command: string): string | null {
-  const kind = youtubeYtDlpDiagnostic(command).yt_dlp_command_kind;
-  if (kind !== 'yt_dlp' && kind !== 'mango_wrapper') {
-    return null;
+let cachedYtDlpVersion: { command: string; version: string | null; checked_at: number } | null = null;
+let ytDlpVersionFlight: { command: string; promise: Promise<void> } | null = null;
+let cachedPotServer: { checked_at: number; up: boolean } | null = null;
+let potServerFlight: Promise<void> | null = null;
+let runtimeProbeGeneration = 0;
+const YT_DLP_VERSION_TTL_MS = 60 * 60 * 1000;
+const YOUTUBE_POT_SERVER_TTL_MS = 5_000;
+const activeRuntimeProbeChildren = new Set<ChildProcess>();
+
+function boundedProcessOutput(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<{ status: number | null; stdout: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let stdout = '';
+    let child: ChildProcess | null = null;
+    const finish = (status: number | null) => {
+      if (settled) return;
+      settled = true;
+      if (child) activeRuntimeProbeChildren.delete(child);
+      clearTimeout(timer);
+      resolve({ status, stdout });
+    };
+    const timer = setTimeout(() => {
+      child?.kill('SIGKILL');
+      finish(null);
+    }, timeoutMs);
+    timer.unref?.();
+    try {
+      child = spawn(command, args, {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      child.once('spawn', () => {
+        if (!settled && child) activeRuntimeProbeChildren.add(child);
+      });
+      child.stdout?.setEncoding('utf8');
+      child.stdout?.on('data', (chunk: string) => {
+        if (stdout.length < 256) stdout += chunk.slice(0, 256 - stdout.length);
+      });
+      child.once('error', () => finish(null));
+      child.once('close', (status) => finish(status));
+    } catch {
+      finish(null);
   }
-  if (cachedYtDlpVersion?.command === command) {
-    return cachedYtDlpVersion.version;
-  }
-  const result = spawnSync(command, ['--version'], {
-    encoding: 'utf8',
-    timeout: 4000,
-    stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+function refreshYoutubeYtDlpVersion(command: string): void {
+  if (ytDlpVersionFlight?.command === command) return;
+  const probeGeneration = runtimeProbeGeneration;
+  const promise = (async () => {
+    const result = await boundedProcessOutput(command, ['--version'], 4000);
   const version = result.status === 0
     ? (result.stdout || '').trim().split(/\s+/)[0] || null
     : null;
-  cachedYtDlpVersion = { command, version };
-  return version;
+    if (probeGeneration === runtimeProbeGeneration) {
+      cachedYtDlpVersion = { command, version, checked_at: Date.now() };
+    }
+  })().finally(() => {
+    if (ytDlpVersionFlight?.promise === promise) ytDlpVersionFlight = null;
+  });
+  ytDlpVersionFlight = { command, promise };
 }
 
-let cachedPotServer: { at: number; up: boolean } | null = null;
-
-function youtubePotServerUp(): boolean {
+function youtubeYtDlpVersionSnapshot(command: string): YoutubeProbeSnapshot<string | null> {
+  const kind = youtubeYtDlpDiagnostic(command).yt_dlp_command_kind;
+  if (kind !== 'yt_dlp' && kind !== 'mango_wrapper') {
+    return { value: null, fresh: true, checked_at: null };
+  }
   const now = Date.now();
-  if (cachedPotServer && now - cachedPotServer.at < 5000) {
-    return cachedPotServer.up;
+  const cached = cachedYtDlpVersion?.command === command ? cachedYtDlpVersion : null;
+  const fresh = cached ? now - cached.checked_at < YT_DLP_VERSION_TTL_MS : false;
+  if (!fresh) {
+    refreshYoutubeYtDlpVersion(command);
   }
-  const port = Number(process.env.MANGO_BGUTIL_HTTP_PORT || 4416);
-  if (!Number.isFinite(port) || port < 1 || port > 65535) {
-    cachedPotServer = { at: now, up: false };
-    return false;
+  return {
+    value: cached?.version ?? null,
+    fresh,
+    checked_at: cached?.checked_at ?? null,
+  };
   }
-  const up = (() => {
-    try {
-      const ping = (url: string): boolean => {
-        const result = spawnSync('curl', ['-sf', '--max-time', '1', url], {
-          encoding: 'utf8',
-          timeout: 2000,
-          stdio: ['ignore', 'pipe', 'pipe'],
+
+function refreshYoutubePotServer(): void {
+  if (potServerFlight) return;
+  const probeGeneration = runtimeProbeGeneration;
+  const promise = new Promise<void>((resolve) => {
+    setImmediate(() => {
+      probeYoutubePotReady(250)
+    .then((up) => {
+      if (probeGeneration === runtimeProbeGeneration) {
+        cachedPotServer = { checked_at: Date.now(), up };
+      }
+    })
+    .catch(() => {
+      if (probeGeneration === runtimeProbeGeneration) {
+        cachedPotServer = { checked_at: Date.now(), up: false };
+      }
+    })
+        .finally(resolve);
+    });
+  }).finally(() => {
+      if (potServerFlight === promise) potServerFlight = null;
         });
-        return result.status === 0;
+  potServerFlight = promise;
+}
+
+function youtubePotServerSnapshot(): YoutubeProbeSnapshot<boolean> {
+  const now = Date.now();
+  const fresh = cachedPotServer ? now - cachedPotServer.checked_at < YOUTUBE_POT_SERVER_TTL_MS : false;
+  if (!fresh) {
+    refreshYoutubePotServer();
+  }
+  return {
+    value: cachedPotServer?.up ?? false,
+    fresh,
+    checked_at: cachedPotServer?.checked_at ?? null,
       };
-      return ping(`http://127.0.0.1:${port}/ping`) || ping(`http://[::1]:${port}/ping`);
-    } catch {
-      return false;
     }
-  })();
-  cachedPotServer = { at: now, up };
-  return up;
+
+export function resetYoutubeRuntimeDiagnosticsForTests(): void {
+  runtimeProbeGeneration += 1;
+  for (const child of activeRuntimeProbeChildren) {
+    child.kill('SIGKILL');
+  }
+  activeRuntimeProbeChildren.clear();
+  cachedYtDlpVersion = null;
+  ytDlpVersionFlight = null;
+  cachedPotServer = null;
+  potServerFlight = null;
 }
 
 function isNightlyYoutubeRefresh(reason: string): boolean {
@@ -313,6 +401,12 @@ export type YoutubeCompanionStatus = {
   synced_at: number | null;
 };
 
+type YoutubeAuthLastError = {
+  category: 'invalid_grant' | 'auth' | 'network';
+  at: number;
+  reconnect_required: boolean;
+};
+
 export type YoutubeCompanionAuthStart = {
   session_id: string;
   user_code: string;
@@ -354,6 +448,30 @@ export function youtubeCompanionAuthPollResponse(
     ...(typeof poll.interval_sec === 'number' ? { interval_sec: poll.interval_sec } : {}),
     ...(account ? { account } : {}),
   };
+}
+
+function youtubeAuthLastError(): YoutubeAuthLastError | null {
+  return getYoutubeState<YoutubeAuthLastError | null>('youtube_auth_last_error', null);
+}
+
+function recordYoutubeAuthError(error: unknown): void {
+  const authError = error instanceof CatalogError && typeof error.details?.auth_error === 'string'
+    ? error.details.auth_error
+    : '';
+  const category: YoutubeAuthLastError['category'] = authError === 'invalid_grant'
+    ? 'invalid_grant'
+    : error instanceof TypeError
+      ? 'network'
+      : 'auth';
+  setYoutubeState('youtube_auth_last_error', {
+    category,
+    at: nowMs(),
+    reconnect_required: category === 'invalid_grant',
+  } satisfies YoutubeAuthLastError);
+}
+
+function clearYoutubeAuthError(): void {
+  setYoutubeState('youtube_auth_last_error', null);
 }
 
 type YoutubeConnectedAccountState = {
@@ -878,6 +996,15 @@ export class YoutubeService {
   state(): Record<string, unknown> {
     const auth = youtubeAuthSummary(this.config);
     const cache = youtubeCacheSummary();
+    const provenance = youtubeV2CandidateProvenanceSummary();
+    const ytDlpVersion = youtubeYtDlpVersionSnapshot(this.config.yt_dlp_command);
+    const potServer = youtubePotServerSnapshot();
+    const v2Mode = youtubeRecommendationsV2Mode();
+    const sourceStale = youtubeV2SourceStaleState();
+    const v2RailSummary = latestYoutubeV2GenerationRailSummary({
+      allowExpiredNonLive: sourceStale.stale,
+    });
+    const authError = youtubeAuthLastError();
     return {
       ok: true,
       enabled: this.config.enabled,
@@ -885,17 +1012,31 @@ export class YoutubeService {
         api_key: Boolean(this.config.api_key),
         oauth_client: auth.configured,
         ...youtubeYtDlpDiagnostic(this.config.yt_dlp_command),
-        yt_dlp_version: youtubeYtDlpVersion(this.config.yt_dlp_command),
-        pot_server: youtubePotServerUp(),
+        yt_dlp_version: ytDlpVersion.value,
+        yt_dlp_version_fresh: ytDlpVersion.fresh,
+        yt_dlp_version_checked_at: ytDlpVersion.checked_at,
+        pot_server: potServer.value,
+        pot_server_fresh: potServer.fresh,
+        pot_server_checked_at: potServer.checked_at,
         playback_cookies: Boolean(this.config.yt_dlp_cookies),
       },
       playback: youtubeRuntimeDiagnostics(readYoutubeRuntimeSnapshot({
         cookiesConfigured: Boolean(this.config.yt_dlp_cookies),
-        potReady: youtubePotServerUp(),
+        potReady: potServer.value,
       })),
       auth: {
         configured: auth.configured,
-        authenticated: auth.authenticated,
+        authenticated: auth.authenticated && authError?.reconnect_required !== true,
+        token_present: auth.token_present,
+        access_token_valid: auth.access_token_valid,
+        renewable: auth.renewable,
+        needs_reconnect: auth.needs_reconnect || authError?.reconnect_required === true,
+        status: authError?.reconnect_required ? 'reconnect_required' : auth.status,
+        last_error: authError ? {
+          category: authError.category,
+          at: authError.at,
+          reconnect_required: authError.reconnect_required,
+        } : null,
         expires_at: typeof auth.expires_at === 'number'
           && Number.isFinite(auth.expires_at)
           && auth.expires_at >= 0
@@ -908,7 +1049,17 @@ export class YoutubeService {
         videos: cache.videos,
         channels: cache.channels,
         playlists: cache.playlists,
-        rail_count: cache.rail_ids.length,
+        rail_count: v2Mode === 'serve' ? v2RailSummary.available_rail_count : cache.rail_ids.length,
+        legacy_rail_count: cache.rail_ids.length,
+        v2_allocated_rail_count: v2RailSummary.allocated_rail_count,
+        v2_available_rail_count: v2Mode === 'serve'
+          ? v2RailSummary.available_rail_count
+          : 0,
+        v2_renderable_candidate_rail_count: v2Mode === 'serve'
+          ? v2RailSummary.renderable_candidate_rail_count
+          : 0,
+        v2_candidates: provenance.active,
+        v2_candidates_expired: provenance.expired,
       },
       recommendations_v2: youtubeV2Diagnostics(),
     };
@@ -917,8 +1068,9 @@ export class YoutubeService {
   companionStatus(): YoutubeCompanionStatus {
     const auth = youtubeAuthSummary(this.config);
     const refresh = youtubeRefreshStatus();
+    const authError = youtubeAuthLastError();
     const account = getYoutubeState<YoutubeConnectedAccountState | null>('youtube_connected_account', null);
-    const authenticated = auth.authenticated;
+    const authenticated = auth.authenticated && authError?.reconnect_required !== true;
     const syncStatus = !authenticated
       ? 'disconnected' as const
       : account?.sync_status ?? (youtubeRecommendationsV2Mode() === 'off' ? 'paused' : 'syncing');
@@ -926,7 +1078,10 @@ export class YoutubeService {
       api_key_configured: Boolean(this.config.api_key),
       oauth_configured: auth.configured,
       authenticated,
-      needs_attention: syncStatus === 'attention' || Boolean(refresh.last_error),
+      needs_attention: syncStatus === 'attention'
+        || Boolean(refresh.last_error)
+        || Boolean(authError?.reconnect_required)
+        || auth.needs_reconnect,
       sync_status: syncStatus,
       channel_title: authenticated ? account?.channel_title ?? null : null,
       channel_thumbnail: authenticated ? account?.channel_thumbnail ?? null : null,
@@ -942,11 +1097,16 @@ export class YoutubeService {
   }
 
   async pollAuth(sessionId: string): Promise<YoutubeAuthPollResult> {
-    return pollYoutubeDeviceAuth(this.config, sessionId);
+    const poll = await pollYoutubeDeviceAuth(this.config, sessionId);
+    if (poll.status === 'authenticated') {
+      clearYoutubeAuthError();
+    }
+    return poll;
   }
 
   disconnectAuth(): Record<string, unknown> {
     clearYoutubeAuth(this.config);
+    clearYoutubeAuthError();
     if (youtubeRecommendationsV2Mode() !== 'off') {
       setYoutubeState('youtube_v2_source_stale', {
         stale: true,
@@ -1044,7 +1204,13 @@ export class YoutubeService {
   }
 
   private async refreshSubscriptionsIfAuthorized(reason: string): Promise<void> {
-    const token = await youtubeAccessToken(this.config).catch(() => null);
+    let token: string | null = null;
+    try {
+      token = await youtubeAccessToken(this.config);
+      if (token) clearYoutubeAuthError();
+    } catch (error) {
+      recordYoutubeAuthError(error);
+    }
     if (!token) {
       const authoritativeCount = listYoutubeV2Subscriptions()
         .filter((row) => row.source === 'oauth').length;

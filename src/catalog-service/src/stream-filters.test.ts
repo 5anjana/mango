@@ -515,6 +515,437 @@ test('same-name series editions use country, start year, and episode title witho
   assert.equal(pinned.meta.excluded.title_mismatch, 1);
 });
 
+test('India edition override requires explicit target-edition evidence for generic same-title releases', () => {
+  const release = (filename: string, description = filename): Stream => ({
+    url: `https://example.test/${encodeURIComponent(filename)}.mkv`,
+    source: 'AIOStreams',
+    name: '[TB⚡] Comet 1080p',
+    title: '[TB⚡] Comet 1080p',
+    description: `📁 ${description}`,
+    behaviorHints: {
+      filename,
+      bingeGroup: 'com.aiostreams|torbox|true|1080p',
+    },
+  });
+  const context = {
+    contentType: 'series',
+    metaTitle: 'The Traitors',
+    trustedTitles: ['The Traitors', 'The Traitors India'],
+    metaId: 'tt33347879:2:1',
+    metaCountry: 'India',
+    requireExplicitEdition: true,
+  } as const;
+  const indiaByReleaseTitle = release(
+    'The.Traitors.India.S02E01.1080p.WEB-DL.mkv',
+    'The Traitors India S02 • E01 WEB-DL FuegoPaaji Amazon 🌐 🇬🇧 / 🇮🇳 📝 🇬🇧',
+  );
+  const indiaByBoundedInSuffix = release(
+    'The.Traitors.IN.S02E01.1080p.WEB-DL.mkv',
+    'The Traitors IN S02 • E01 WEB-DL',
+  );
+  const indiaSeasonPack = release(
+    'The.Traitors.India.S02.1080p.AMZN.WEB-DL.mkv',
+    'The Traitors India S02 1080p AMZN WEB-DL',
+  );
+  const indiaSeasonReleaseYear = release(
+    'The.Traitors.India.2026.S02E01.1080p.AMZN.WEB-DL.mkv',
+    'The Traitors India 2026 S02 • E01 WEB-DL',
+  );
+  const indiaFutureYear = release(
+    'The.Traitors.India.2099.S02E01.1080p.AMZN.WEB-DL.mkv',
+    'The Traitors India 2099 S02 • E01 WEB-DL',
+  );
+  const indiaByMetaTitle = release(
+    'The.Traitors.India.S02E01.1080p.WEB-DL.alt.mkv',
+    'The Traitors India S02 • E01 WEB-DL',
+  );
+  const genericSeasonPack = release(
+    'The.Traitors.S02.1080p.AMZN.WEB-DL.mkv',
+    'The Traitors S02 1080p AMZN WEB-DL',
+  );
+  const genericYearDifferentLabel = release(
+    'The.Traitors.India.S02E01.1080p.AMZN.WEB-DL.mkv',
+    'The Traitors 2026 S02 • E01 WEB-DL',
+  );
+  const foreignWithTargetImdb = release(
+    'The.Traitors.UK.2026.S02E01.tt33347879.1080p.AMZN.WEB-DL.mkv',
+    'The Traitors UK 2026 S02 • E01 WEB-DL tt33347879',
+  );
+  const wrongEpisode = release(
+    'The.Traitors.India.2026.S02E02.1080p.AMZN.WEB-DL.mkv',
+    'The Traitors India 2026 S02 • E02 WEB-DL',
+  );
+  const wrongSeasonPack = release(
+    'The.Traitors.India.2026.S03.1080p.AMZN.WEB-DL.mkv',
+    'The Traitors India 2026 S03 1080p AMZN WEB-DL',
+  );
+  const audioOnlyIndia = release(
+    'The.Traitors.S02E01.1080p.WEB-DL.mkv',
+    'The Traitors S02 • E01 WEB-DL FuegoPaaji Amazon 🌐 🇬🇧 / 🇮🇳 📝 🇬🇧',
+  );
+  const wrongPriorYear = release(
+    'The.Traitors.India.2024.S02E01.1080p.AMZN.WEB-DL.mkv',
+    'The Traitors India 2024 S02 • E01 WEB-DL',
+  );
+  const generic = release('The.Traitors.S02E01.1080p.WEB-DL.MeGusta.mkv');
+  const peacock = release(
+    'The.Traitors.S02E01.1080p.WEB-DL.NTb.mkv',
+    'The Traitors S02 • E01 WEB-DL NTb Peacock 🌐 🇬🇧 📝 🇬🇧 / 🇪🇸',
+  );
+  const confirmedFilename = 'The.Traitors.S02E01.1080p.AMZN.WEB-DL.Hindi.DDP5.1.ESub.x264-FuegoPaaji.mkv';
+  const confirmedGeneric = release(
+    'the.traitors.s02e01.1080p.amzn.web-dl.hindi.ddp5.1.esub.x264-fuegopaaji.mkv',
+    'The Traitors S02 • E01 WEB-DL FuegoPaaji Amazon 🌐 🇬🇧 / 🇮🇳 📝 🇬🇧',
+  );
+  const confirmedContext = {
+    ...context,
+    contentConfirmedReleases: [{
+      episodeId: 'tt33347879:2:1',
+      behaviorFilename: ` ${confirmedFilename} `,
+    }],
+  };
+  assert.equal(streamMatchesMetaTitle(indiaByReleaseTitle, context.metaTitle, context.metaId, context), true);
+  assert.equal(
+    streamMatchesMetaTitle(indiaByBoundedInSuffix, context.metaTitle, context.metaId, context),
+    true,
+    'IN certifies India only as a bounded suffix after the exact canonical show title',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(indiaSeasonPack, context.metaTitle, context.metaId, context),
+    true,
+    'standalone S02 season-pack markers should not hide an explicit India release title',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      indiaSeasonReleaseYear,
+      context.metaTitle,
+      context.metaId,
+      { ...context, metaYear: 2025, episodeReleaseYear: 2026 },
+    ),
+    true,
+    'series season release years can differ from show start only when the exact episode metadata says so',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      indiaSeasonReleaseYear,
+      context.metaTitle,
+      context.metaId,
+      { ...context, metaYear: 2025 },
+    ),
+    false,
+    'without exact episode release metadata, non-start-year series labels fail closed',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      indiaByMetaTitle,
+      'The Traitors India',
+      context.metaId,
+      context,
+    ),
+    true,
+    'release-title India remains explicit evidence even when India is also in metaTitle',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(audioOnlyIndia, context.metaTitle, context.metaId, context),
+    false,
+    'India/Hindi audio flags alone are language evidence, not production-edition evidence',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(confirmedGeneric, context.metaTitle, context.metaId, confirmedContext),
+    true,
+    'content-confirmed exact behaviorHints.filename waives only missing explicit edition evidence',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      confirmedGeneric,
+      context.metaTitle,
+      'tt33347879:2:2',
+      confirmedContext,
+    ),
+    false,
+    'content-confirmed releases are scoped to the exact requested episode id',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      release(
+        confirmedFilename.replace('FuegoPaaji', 'FuegoPaaj1'),
+        'The Traitors S02 • E01 WEB-DL FuegoPaaji Amazon 🌐 🇬🇧 / 🇮🇳 📝 🇬🇧',
+      ),
+      context.metaTitle,
+      context.metaId,
+      confirmedContext,
+    ),
+    false,
+    'content-confirmed release filenames are exact after case/trim normalization only',
+  );
+  assert.equal(
+    streamMatchesMetaTitle({
+      url: 'https://example.test/description-only.mkv',
+      source: 'AIOStreams',
+      name: '[TB⚡] Comet 1080p',
+      title: '[TB⚡] Comet 1080p',
+      description: `📁 ${confirmedFilename}`,
+      behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|1080p' },
+    }, context.metaTitle, context.metaId, confirmedContext),
+    false,
+    'content-confirmed release matching never trusts description/title without behaviorHints.filename',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      release(
+        'The.Traitors.UK.S02E01.1080p.AMZN.WEB-DL.Hindi.DDP5.1.ESub.x264-FuegoPaaji.mkv',
+        'The Traitors UK S02 • E01 WEB-DL',
+      ),
+      context.metaTitle,
+      context.metaId,
+      {
+        ...context,
+        contentConfirmedReleases: [{
+          episodeId: 'tt33347879:2:1',
+          behaviorFilename: 'The.Traitors.UK.S02E01.1080p.AMZN.WEB-DL.Hindi.DDP5.1.ESub.x264-FuegoPaaji.mkv',
+        }],
+      },
+    ),
+    false,
+    'content-confirmed filename matching does not bypass explicit foreign-edition conflicts',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      release(
+        'The.Traitors.S02E02.1080p.AMZN.WEB-DL.Hindi.DDP5.1.ESub.x264-FuegoPaaji.mkv',
+        'The Traitors S02 • E02 WEB-DL',
+      ),
+      context.metaTitle,
+      context.metaId,
+      {
+        ...context,
+        contentConfirmedReleases: [{
+          episodeId: 'tt33347879:2:1',
+          behaviorFilename: 'The.Traitors.S02E02.1080p.AMZN.WEB-DL.Hindi.DDP5.1.ESub.x264-FuegoPaaji.mkv',
+        }],
+      },
+    ),
+    false,
+    'content-confirmed filename matching does not bypass wrong episode markers',
+  );
+  assert.equal(streamMatchesMetaTitle(genericSeasonPack, context.metaTitle, context.metaId, context), false);
+  assert.equal(
+    streamMatchesMetaTitle(indiaByReleaseTitle, context.metaTitle, context.metaId, { ...context, metaYear: 2025 }),
+    true,
+    'yearless explicit target identity remains valid with a series start-year context',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      indiaFutureYear,
+      context.metaTitle,
+      context.metaId,
+      { ...context, metaYear: 2025, episodeReleaseYear: 2026 },
+    ),
+    false,
+    'future years are not admitted by the season-year exception',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      release(
+        'The.Traitors.2099.S02E01.1080p.AMZN.WEB-DL.Hindi.DDP5.1.ESub.x264-FuegoPaaji.mkv',
+        'The Traitors 2099 S02 • E01 WEB-DL',
+      ),
+      context.metaTitle,
+      context.metaId,
+      {
+        ...confirmedContext,
+        metaYear: 2025,
+        episodeReleaseYear: 2026,
+        contentConfirmedReleases: [{
+          episodeId: 'tt33347879:2:1',
+          behaviorFilename: 'The.Traitors.2099.S02E01.1080p.AMZN.WEB-DL.Hindi.DDP5.1.ESub.x264-FuegoPaaji.mkv',
+        }],
+      },
+    ),
+    false,
+    'content-confirmed filename matching does not bypass explicit wrong release years',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      genericYearDifferentLabel,
+      context.metaTitle,
+      context.metaId,
+      { ...context, metaYear: 2025, episodeReleaseYear: 2026 },
+    ),
+    false,
+    'season release-year evidence must be certified on the same provider label as the year',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      foreignWithTargetImdb,
+      context.metaTitle,
+      context.metaId,
+      { ...context, metaYear: 2025, episodeReleaseYear: 2026 },
+    ),
+    false,
+    'target IMDb evidence cannot override an explicit foreign edition',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      wrongEpisode,
+      context.metaTitle,
+      context.metaId,
+      { ...context, metaYear: 2025, episodeReleaseYear: 2026 },
+    ),
+    false,
+    'the year exception does not bypass exact episode mismatch rejection',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      wrongSeasonPack,
+      context.metaTitle,
+      context.metaId,
+      { ...context, metaYear: 2025, episodeReleaseYear: 2026 },
+    ),
+    false,
+    'season-pack labels still must match the requested season',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      wrongPriorYear,
+      context.metaTitle,
+      context.metaId,
+      { ...context, metaYear: 2025 },
+    ),
+    false,
+    'release years before the series start year remain explicit identity conflicts',
+  );
+  assert.equal(
+    streamMatchesMetaTitle(
+      release('Some.Movie.India.2026.1080p.WEB-DL.mkv', 'Some Movie India 2026 WEB-DL'),
+      'Some Movie',
+      'tt1234567',
+      {
+        contentType: 'movie',
+        metaYear: 2025,
+        episodeReleaseYear: 2026,
+        metaCountry: 'India',
+        trustedTitles: ['Some Movie', 'Some Movie India'],
+        requireExplicitEdition: true,
+      },
+    ),
+    false,
+    'series-only release-year exception does not relax movie remake fences',
+  );
+  assert.equal(streamMatchesMetaTitle(generic, context.metaTitle, context.metaId, context), false);
+  assert.equal(streamMatchesMetaTitle(peacock, context.metaTitle, context.metaId, context), false);
+
+  const ranked = filterAndRankStreams(
+    [generic, peacock, audioOnlyIndia, genericSeasonPack, indiaByReleaseTitle],
+    testConfig(),
+    context,
+  );
+  assert.equal(ranked.streams.length, 1);
+  assert.equal(ranked.streams[0]?.url, indiaByReleaseTitle.url);
+  assert.equal(ranked.meta.excluded.title_mismatch, 4);
+});
+
+test('live Traitors S2E1 labels fail closed when India only appears as audio/subtitle flags', () => {
+  const descriptions = [
+    'The Traitors S02 • E01 WEB-DL MeGusta HEVC 0.8GB',
+    'The Traitors S02 • E01 WEB-DL FuegoPaaji AVC Amazon 🌐 🇬🇧 / 🇮🇳 📝 🇬🇧',
+    'The Traitors S02 • E01 WEB-DL NTb Peacock 🌐 🇬🇧 📝 🇬🇧 / 🇪🇸',
+    'The Traitors S02 • E01 WEBRip CBFM 2GB',
+    'The Traitors S02 • E01 HDTV DARKFLiX 2GB',
+    'The Traitors S02 • E01 HEVC MeGusta 0.4GB',
+    'The Traitors S02 • E01 WEB-DL NTb 2GB',
+    'The Traitors S02 • E01 WEB-DL ROPATA 1.4GB',
+    'The Traitors S02 • E01 HDTV TORRENTGALAXY 0.6GB',
+    'The Traitors S02 • E01 3GB',
+  ];
+  const streams = descriptions.map((description, index) => stream(
+    `📁 ${description}`,
+    `https://example.test/live-traitors-${index}.mkv`,
+  ));
+  const result = filterAndRankStreams(
+    streams,
+    testConfig(),
+    {
+      contentType: 'series',
+      metaTitle: 'The Traitors',
+      trustedTitles: ['The Traitors', 'The Traitors India'],
+      metaId: 'tt33347879:2:1',
+      metaCountry: 'India',
+      requireExplicitEdition: true,
+    },
+  );
+  assert.equal(result.streams.length, 0);
+  assert.equal(result.meta.excluded.title_mismatch, 10);
+});
+
+test('short country words inside ordinary titles are not edition aliases', () => {
+  const passage = {
+    url: 'https://example.invalid/test',
+    source: 'AIOStreams',
+    name: 'A.Passage.to.India.1984.1080p',
+    title: 'A.Passage.to.India.1984.1080p',
+  } satisfies Stream;
+  const daughter = {
+    url: 'https://example.invalid/daughter',
+    source: 'AIOStreams',
+    name: "India's.Daughter.2015.1080p",
+    title: "India's.Daughter.2015.1080p",
+  } satisfies Stream;
+  const onceUpon = stream(
+    'Once Upon a Time in America 1984 1080p BluRay',
+    'https://example.test/once-upon.mkv',
+  );
+  onceUpon.behaviorHints = { filename: 'Once.Upon.a.Time.in.America.1984.1080p.BluRay.mkv' };
+  const canYou = stream(
+    'Can You Ever Forgive Me 2018 1080p BluRay',
+    'https://example.test/can-you.mkv',
+  );
+  canYou.behaviorHints = { filename: 'Can.You.Ever.Forgive.Me.2018.1080p.BluRay.mkv' };
+  assert.equal(streamMatchesMetaTitle(
+    passage,
+    'A Passage to India',
+    'tt0087892',
+    { contentType: 'movie', metaYear: 1984, metaCountry: 'United Kingdom' },
+  ), true);
+  assert.equal(streamMatchesMetaTitle(
+    daughter,
+    "India's Daughter",
+    'tt4058426',
+    { contentType: 'movie', metaYear: 2015, metaCountry: 'United Kingdom' },
+  ), true);
+  assert.equal(streamMatchesMetaTitle(
+    onceUpon,
+    'Once Upon a Time in America',
+    'tt0087843',
+    { contentType: 'movie', metaYear: 1984, metaCountry: 'United States' },
+  ), true);
+  assert.equal(streamMatchesMetaTitle(
+    canYou,
+    'Can You Ever Forgive Me?',
+    'tt4595882',
+    { contentType: 'movie', metaYear: 2018, metaCountry: 'United States' },
+  ), true);
+  assert.equal(streamMatchesMetaTitle(
+    canYou,
+    'Can You Ever Forgive Me?',
+    'tt4595882',
+    { contentType: 'movie', metaYear: 2018, metaCountry: 'Canada', requireExplicitEdition: true },
+  ), false);
+});
+
+test('uncertifiable metadata identity rejects streams before title fallback', () => {
+  const chimpMovie = stream(
+    'Chimp Empire S01E01 Paradise Lost 1080p WEB-DL',
+    'https://example.test/chimp-movie.mkv',
+  );
+  assert.equal(streamPassesIntegrity(chimpMovie, {
+    contentType: 'movie',
+    metaTitle: 'Chimp Empire',
+    metaId: 'tt27205918',
+    identityCertifiable: false,
+  }), false);
+});
+
 test('same-name movie remakes reject an explicit conflicting release year', () => {
   const dune1984: Stream = {
     url: 'https://example.test/dune-1984.mkv',

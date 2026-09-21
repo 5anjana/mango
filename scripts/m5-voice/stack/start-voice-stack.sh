@@ -62,7 +62,7 @@ tmux new-session -d -s mango-companion \
 
 if wait_voice_healthy; then
   echo "✓ voice stack up (tmux: mango-orch, mango-companion; launcher HUD only)"
-    echo "  phone: ${PHONE_URL}"
+  echo "  phone: ${PHONE_URL}"
   exit 0
 fi
 

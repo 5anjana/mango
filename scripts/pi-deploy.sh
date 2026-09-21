@@ -5,7 +5,7 @@
 #   bash scripts/pi-deploy.sh [--fast] [--full] [--gate]
 #
 #   --fast   default for agent iteration — build + restart; npm ci only when
-#            package-lock.json changes (see scripts/lib/pi-npm-deps.sh)
+#            lockfile/native runtime changes (see scripts/lib/pi-npm-deps.sh)
 #   --full   always npm ci both apps (deps change, first boot, handoff)
 #   --gate   run gate-lite after deploy (MANGO_GATE_FULL=1 for per-rail play sweep)
 #   MANGO_CONTROLLER_LINK_INSTALL=1 installs controller BlueZ policy before restart
@@ -85,13 +85,13 @@ fi
 echo "Pi at \$actual"
 bash scripts/lib/sync-etc-mango-config.sh || true
 if [[ "${SKIP_AIOMETADATA}" == "0" ]]; then
-  MANGO_SKIP_AIOMETADATA_SYNC=0 bash scripts/m4-addons/sync-aiometadata-rail-catalogs.sh
+  MANGO_SYNC_AIOMETADATA=1 MANGO_SKIP_AIOMETADATA_SYNC=0 bash scripts/m4-addons/sync-aiometadata-rail-catalogs.sh
 else
   MANGO_SKIP_AIOMETADATA_SYNC=1 bash scripts/m4-addons/sync-aiometadata-rail-catalogs.sh
 fi
 bash scripts/m5-voice/ai/sync-companion-example.sh || true
 bash scripts/m4-addons/ensure-bharat-binge-export.sh || true
-bash scripts/m6-ship/ensure-youtube-yt-dlp.sh || true
+bash scripts/m6-ship/ensure-youtube-yt-dlp.sh
 if [[ "${MANGO_CONTROLLER_LINK_INSTALL:-0}" == "1" ]]; then
   sudo -n bash scripts/m1-foundation/pad/install-controller-reliability.sh --apply
 fi
@@ -109,7 +109,7 @@ else
   cd ~/mango/src/companion && npm ci --silent && npm run build
 fi
 cd ~/mango
-bash scripts/m1-foundation/ui/install-systemd-units.sh || true
+bash scripts/m1-foundation/ui/install-systemd-units.sh
 if [[ "${MANGO_VOICE:-0}" == "1" ]]; then
   bash scripts/m5-voice/stack/install-voice-systemd.sh || true
 fi

@@ -79,7 +79,51 @@ catalog-service, launcher, and companion builds.
 Logs: `$HOME/.cache/mango/catalog-service.log`, `orchestrator.log`,
 `mpv-play.log`. Never paste secrets or signed URLs.
 
+Shell maintenance reports keep full detail in `~/.cache/mango/ops/reports/`.
+The append-only `events.jsonl` ledger retains its 1 MB per-event limit. Oversized
+events contain a bounded summary and a reference to the full, atomically written
+report; the report must exist before that reference is appended. Report size
+must not prevent an otherwise valid staged grow from reaching publication.
+
 ## Backup
 
 Use `scripts/m6-ship/backup-library-state.sh` before schema work. Runtime
 DBs, AIOStreams `userData`, and YouTube OAuth stay on the device.
+
+## One-night recovery window
+
+`scripts/m3-play/playability/overnight-recovery.py` runs bounded, coordinated
+stale-reverification and discovery passes with an operator-specified absolute
+admission cutoff and finish target. Use explicit timezone-offset datetimes for
+`--admission-stop-at` and `--finish-at`; inspect `--dry-run` before launching it
+as a detached `systemd-run --user` service. Keep the Pi and network powered.
+
+The default allocation is 80% stale recovery by elapsed pass time. Required
+short verification probes remain enabled; playback gates, source benchmarks,
+and YouTube refresh are disabled. Existing identity rules and retry queues
+remain authoritative. The supervisor temporarily guards competing scheduled
+services while leaving their persistent timers active, avoiding morning
+catch-up. Runtime guards expire by clock even if the supervisor fails.
+
+Receipts live under `~/.cache/mango/ops/overnight-recovery-*.json`, alongside
+the existing per-pass maintenance receipts. Treat startup, verified-title yield,
+safe publication, and terminal completion as separate evidence. The finish
+time is a graceful target, not permission to kill SQLite publication; a stalled
+publication can exceed it and requires operator inspection.
+
+## Expiry-only visibility recovery
+
+`scripts/m6-ship/restore-expiry-only-visibility.py` defaults to a read-only
+comparison of `--database` and a preserved pre-sweep `--baseline`. It admits only
+unchanged prior verification with one later expiry sweep, no intervening attempt,
+no conflicting retry evidence, and no episode-as-show or dual-type identity.
+It tags `expired_stale`; it never renews verification timestamps or restores a
+whole database. Ordinary failures must pass reverification instead.
+
+Deploy the visibility-aware schema first. Review the dry-run count and digest,
+stop catalog/worker/watchdog for the apply window, then pass `--apply`, that
+`--expected-count` and `--expected-digest`, a new `--rollback-snapshot` path,
+and the stable `--maintenance-lock` path. The tool holds the lock and applies
+transactionally after creating and checking its private rollback snapshot.
+Always restore services afterwards, refresh recommendation publications, and
+verify fresh counts separately from visible last-known-good counts.

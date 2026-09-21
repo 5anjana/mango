@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Pure retry policy for the Mango Bluetooth link supervisor.
+"""Pure retry policy for host-owned HID reconnects.
 
-The 8BitDo Micro (Switch/Pro mode) normally reconnects by initiating to the
-last bonded host after ordinary power-on. Host-side Connect() storms while the
-peripheral radio is off (BlueZ "Host is down") race the HID stack when a second
-owner (BlueZ Policy auto-reconnect) is also paging — ordinary wake then needs
-pairing mode.
+The supervisor applies this paging policy only when Input1.ReconnectMode is
+host/any. Device-owned reconnects (including this Micro's advertised contract)
+remain passive; missing/unknown contracts never authorize host paging.
 
-Policy (sole Connect owner; BlueZ ReconnectAttempts=0):
-  - probe Connect on a short cadence while the bonded Micro looks off;
+Mango host/any retry policy (BlueZ Policy ReconnectAttempts=0 is separate from
+BlueZ's HID-profile reconnect behavior):
+  - probe Connect on a short cadence while the bonded peripheral looks off;
   - never overlap attempts; back off briefly on Host-is-down;
   - on advertising / RSSI wake evidence, Connect immediately;
   - never treat a powered-off Micro as a pairing failure.
@@ -156,7 +155,7 @@ class LinkRetryState:
         if error:
             self.last_error = error
         delay = min(
-            self.asleep_probe_sec * (2 ** self.asleep_probe_streak),
+            self.asleep_probe_sec * (2 ** min(self.asleep_probe_streak, 16)),
             self.asleep_probe_max_sec,
         )
         self.asleep_probe_streak += 1
@@ -185,7 +184,10 @@ class LinkRetryState:
             not self.connected
             and not self.attempt_in_flight
             and now >= self.next_scan_at
-            and (self.peripheral_asleep or not self.device_present)
+            # BlueZ HID often reports only br-connection-create-socket while
+            # logging the underlying Host-is-down errno privately. Do not
+            # permanently disable discovery for these ambiguous failures.
+            and (self.peripheral_asleep or not self.device_present or self.fast_retry_exhausted)
         )
 
     def begin_attempt(self, now: float) -> None:
@@ -219,8 +221,8 @@ class LinkRetryState:
 
     def force_retry(self, now: float) -> None:
         if not self.connected:
-            self.attempt_in_flight = False
-            self.attempt_started_at = 0.0
+            # A retry request cannot cancel a live D-Bus Connect operation.
+            # Keep ownership until its reply or explicit cancellation settles.
             self.retry_index = 0
             self.fast_retry_exhausted = False
             self.peripheral_asleep = False
