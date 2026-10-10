@@ -5,6 +5,7 @@ import {
   normalizeSearchQuery,
   scoreNormalizedSearchMatch,
   scoreSearchMatch,
+  splitYearFromSearchQuery,
   validateSearchQuery,
 } from './normalize.js';
 
@@ -48,6 +49,20 @@ test('pre-normalized index scoring preserves literal ranking exactly', () => {
       scoreSearchMatch(title, query, searchable),
     );
   }
+});
+
+test('splitYearFromSearchQuery keeps a trailing 19xx/20xx for catalog filtering', () => {
+  assert.deepEqual(splitYearFromSearchQuery('The Wedding Banquet 2025'), {
+    text: 'The Wedding Banquet',
+    year: '2025',
+  });
+  assert.deepEqual(splitYearFromSearchQuery('The Wedding Banquet (1993)'), {
+    text: 'The Wedding Banquet',
+    year: '1993',
+  });
+  assert.deepEqual(splitYearFromSearchQuery('The Wedding Banquet'), {
+    text: 'The Wedding Banquet',
+  });
 });
 
 test('romanized and descriptive Hinglish queries are retained for optional expansion', () => {

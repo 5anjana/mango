@@ -3528,6 +3528,7 @@ export class CatalogCore {
     const results: Meta[] = [];
     const seen = new Set<string>();
     for (const addon of this.metaAddonsInOrder()) {
+      if (!addonProvidesTitleMeta(addon.name)) continue;
       const hasSearch = supportsResource(addon.manifest, 'search', type);
       const hasCatalogSearch =
         !hasSearch

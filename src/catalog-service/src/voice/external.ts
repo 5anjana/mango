@@ -3,6 +3,7 @@ import { isBlockedCatalogMeta } from '../catalog-errors.js';
 import { getTitlePlayability, queueTitleForVoiceIngest } from '../playability/db.js';
 import { loadRailConfig } from '../rails.js';
 import { metahubPosterUrl, resolvePosterFromMeta } from '../poster.js';
+import { splitYearFromSearchQuery } from '../search/normalize.js';
 import { scoreTitleMatch } from './search.js';
 
 type MangoBrowseTab = 'movies' | 'series' | 'live';
@@ -74,13 +75,17 @@ function metaTitle(meta: Record<string, unknown>): string {
   return typeof meta.id === 'string' ? meta.id : 'unknown';
 }
 
-function metaYear(meta: Record<string, unknown>): string | undefined {
-  if (meta.year !== undefined && meta.year !== null) {
-    return String(meta.year);
+export function catalogMetaYear(meta: Record<string, unknown>): string | undefined {
+  if (meta.year !== undefined && meta.year !== null && String(meta.year).trim()) {
+    const direct = String(meta.year).match(/\b(19|20)\d{2}\b/);
+    if (direct) return direct[0];
   }
-  const released = typeof meta.released === 'string' ? meta.released : '';
-  const match = released.match(/\b(19|20)\d{2}\b/);
-  return match?.[0];
+  for (const key of ['releaseInfo', 'released', 'release_info'] as const) {
+    const value = typeof meta[key] === 'string' ? meta[key] : '';
+    const match = value.match(/\b(19|20)\d{2}\b/);
+    if (match) return match[0];
+  }
+  return undefined;
 }
 
 async function defaultRailIdForTab(tab: MangoBrowseTab): Promise<string> {
@@ -111,9 +116,10 @@ export async function searchExternalTitles(
   const limit = Math.max(1, Math.min(options.limit ?? 8, 12));
   const seen = new Set<string>();
   const results: ExternalSearchHit[] = [];
+  const { text: titleQuery, year: wantedYear } = splitYearFromSearchQuery(trimmed);
 
   for (const contentType of types) {
-    const metas = await core.searchMeta(contentType, trimmed);
+    const metas = await core.searchMeta(contentType, titleQuery);
     for (const meta of metas) {
       if (isBlockedCatalogMeta(meta)) {
         continue;
@@ -130,7 +136,11 @@ export async function searchExternalTitles(
       seen.add(key);
 
       const title = metaTitle(meta as Record<string, unknown>);
-      const score = scoreTitleMatch(title, trimmed);
+      const hitYear = catalogMetaYear(meta as Record<string, unknown>);
+      if (wantedYear && hitYear && hitYear !== wantedYear) {
+        continue;
+      }
+      const score = scoreTitleMatch(title, titleQuery);
       const poster = resolvePosterFromMeta(meta);
       const playability = await getTitlePlayability(contentType, bareId);
       const { inLibrary, alreadyQueued } = deriveLibraryVerifyState(playability?.status);
@@ -147,7 +157,7 @@ export async function searchExternalTitles(
           title,
           rail_id: railId,
           poster_url: poster ?? metahubPosterUrl(bareId),
-          year: metaYear(meta as Record<string, unknown>) ?? null,
+          year: hitYear ?? wantedYear ?? null,
         });
         queued = true;
       }
@@ -162,7 +172,7 @@ export async function searchExternalTitles(
         type: contentType,
         id: bareId,
         title,
-        year: metaYear(meta as Record<string, unknown>),
+        year: hitYear ?? wantedYear,
         poster: poster ?? metahubPosterUrl(bareId) ?? undefined,
         tab: tabForType(contentType),
         score,
