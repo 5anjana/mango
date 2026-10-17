@@ -822,6 +822,16 @@ function isPlayabilityVodCriticalAddon(addonName: string): boolean {
     || normalized === 'aiometadata';
 }
 
+/**
+ * Title/episode meta is Cinemeta + AIOMetadata. Stream catalogs that advertise
+ * a meta resource still 404/hang (AIOStreams, Bharat Binge) and can miss the
+ * launcher's 12s detail budget after a catalog restart.
+ */
+export function addonProvidesTitleMeta(addonName: string): boolean {
+  const normalized = normalizeAddonName(addonName);
+  return normalized === 'cinemeta' || normalized === 'aiometadata';
+}
+
 async function fetchJson(url: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -1420,6 +1430,7 @@ export class CatalogCore {
   private playabilitySessionId = process.env.MANGO_PLAYABILITY_SESSION_ID || randomUUID();
   private playabilitySessionStartedAt = Date.now();
   private aiCatalogRails: AiCatalogRail[] = [];
+  private readonly metaInflight = new Map<string, Promise<Meta>>();
 
   private constructor(
     private readonly coreStatus: CoreStatus,
@@ -3496,6 +3507,7 @@ export class CatalogCore {
     let merged: Meta | null = null;
     const videoLayers: VideoLayer[] = [];
     for (const addon of this.metaAddonsInOrder()) {
+      if (!addonProvidesTitleMeta(addon.name)) continue;
       if (!supportsResource(addon.manifest, 'meta', type)) continue;
       try {
         const result = await fetchJson(resourceUrl(addon, 'meta', type, id)) as { meta?: Meta };
@@ -3523,6 +3535,7 @@ export class CatalogCore {
     const results: Meta[] = [];
     const seen = new Set<string>();
     for (const addon of this.metaAddonsInOrder()) {
+      if (!addonProvidesTitleMeta(addon.name)) continue;
       const hasSearch = supportsResource(addon.manifest, 'search', type);
       const hasCatalogSearch =
         !hasSearch
@@ -3987,6 +4000,22 @@ export class CatalogCore {
       }
       return cached.meta as Meta;
     }
+    const pending = this.metaInflight.get(key);
+    if (pending) {
+      return pending;
+    }
+    const work = this.loadMetaIntoCache(type, id, key);
+    this.metaInflight.set(key, work);
+    try {
+      return await work;
+    } finally {
+      if (this.metaInflight.get(key) === work) {
+        this.metaInflight.delete(key);
+      }
+    }
+  }
+
+  private async loadMetaIntoCache(type: string, id: string, key: string): Promise<Meta> {
     try {
       const meta = await this.meta(type, id);
       if (isBlockedCatalogMeta(meta)) {

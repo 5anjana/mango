@@ -55,6 +55,23 @@ function testConfig(overrides = {}) {
   }, overrides);
 }
 
+test('parseDebridCacheStatus reads AIOStreams instance bingeGroup ids', () => {
+  const cached: Stream = {
+    url: 'https://example.test/cached.mp4',
+    source: 'AIOStreams',
+    name: '🚀 FHD',
+    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|torbox|true|1080p' },
+  };
+  const uncached: Stream = {
+    url: 'https://example.test/uncached.mp4',
+    source: 'AIOStreams',
+    name: '🚀 FHD',
+    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|realdebrid|false|1080p' },
+  };
+  assert.equal(parseDebridCacheStatus(cached), 'cached');
+  assert.equal(parseDebridCacheStatus(uncached), 'uncached');
+});
+
 test('W2: parseDebridCacheStatus reads current AIOStreams lightgdrive TB/RD badges', () => {
   const examples = [
     ['[TB⚡] Torrentio 1080p', 'cached'],

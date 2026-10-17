@@ -16,9 +16,11 @@ import {
 import { collectLiveSearchEntriesFromCache } from '../live/ai-catalog-seeds.js';
 import {
   getTitlePlayability,
+  listQueuedSearchCatalogRows,
   listVerifiedLibraryCatalogRows,
   playabilitySearchGeneration,
   queueTitleForPlayabilityIngest,
+  type VerifiedRailPoolSearchRow,
 } from '../playability/db.js';
 import { metahubPosterUrl, normalizePosterUrl, youtubeVideoThumbnailUrl } from '../poster.js';
 import { loadRailConfig } from '../rails.js';
@@ -112,6 +114,32 @@ function resultTab(type: string): SearchResult['tab'] {
   if (type === 'tv') return 'live';
   if (type.startsWith('youtube_')) return 'youtube';
   return 'movies';
+}
+
+function mangoCatalogIndexRow(
+  row: VerifiedRailPoolSearchRow,
+  queuedForVerify: boolean,
+): IndexedResult {
+  const type = row.type;
+  const normalizedTitle = normalizeSearchQuery(row.title);
+  const year = row.year?.trim() || '';
+  return {
+    key: `mango:${type}:${row.id}`,
+    source: 'mango',
+    type,
+    id: row.id,
+    title: row.title,
+    subtitle: year || (type === 'series' ? 'TV show' : 'movie'),
+    poster: normalizePosterUrl(row.poster) ?? metahubPosterUrl(row.id) ?? undefined,
+    year: year || undefined,
+    tab: resultTab(type),
+    in_library: !queuedForVerify,
+    queued_for_verify: queuedForVerify,
+    score: 0,
+    match: 'tokens',
+    normalizedTitle,
+    normalizedSearchable: normalizeSearchQuery(`${row.title} ${year}`),
+  };
 }
 
 function youtubeResult(item: YoutubeItem, query: string): SearchResult | null {
@@ -287,28 +315,17 @@ export class UnifiedSearchService {
       let processed = 0;
       for (const row of await listVerifiedLibraryCatalogRows(20_000)) {
         if (++processed % SEARCH_INDEX_ROWS_PER_TURN === 0) await yieldSearchIndexTurn();
-        const key = `mango:${row.type}:${row.id}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const type = row.type;
-        const normalizedTitle = normalizeSearchQuery(row.title);
-        next.push({
-          key,
-          source: 'mango',
-          type,
-          id: row.id,
-          title: row.title,
-          subtitle: row.year || (type === 'series' ? 'TV show' : 'movie'),
-          poster: normalizePosterUrl(row.poster) ?? metahubPosterUrl(row.id) ?? undefined,
-          year: row.year ?? undefined,
-          tab: resultTab(type),
-          in_library: true,
-          queued_for_verify: false,
-          score: 0,
-          match: 'tokens',
-          normalizedTitle,
-          normalizedSearchable: normalizedTitle,
-        });
+        const indexed = mangoCatalogIndexRow(row, false);
+        if (seen.has(indexed.key)) continue;
+        seen.add(indexed.key);
+        next.push(indexed);
+      }
+      for (const row of await listQueuedSearchCatalogRows(500)) {
+        if (++processed % SEARCH_INDEX_ROWS_PER_TURN === 0) await yieldSearchIndexTurn();
+        const indexed = mangoCatalogIndexRow(row, true);
+        if (seen.has(indexed.key)) continue;
+        seen.add(indexed.key);
+        next.push(indexed);
       }
       for (const item of listYoutubeItems(null, 20_000)) {
         if (++processed % SEARCH_INDEX_ROWS_PER_TURN === 0) await yieldSearchIndexTurn();
@@ -881,7 +898,17 @@ export class UnifiedSearchService {
       if (top.length >= TOP_GROUP_LIMIT) break;
       if (!top.some((candidate) => candidate.key === item.key)) top.push(item);
     }
-    const external = uniqueRanked(job.results.external.filter((item) => !item.in_library), boosts);
+    const localCatalogIds = new Set(
+      combined
+        .filter((item) => item.source === 'mango' && (item.tab === 'movies' || item.tab === 'series'))
+        .map((item) => `${item.type}:${item.id}`),
+    );
+    const external = uniqueRanked(
+      job.results.external.filter((item) => (
+        !item.in_library && !localCatalogIds.has(`${item.type}:${item.id}`)
+      )),
+      boosts,
+    );
     const related = uniqueRanked(job.results.related, boosts);
     const groups: SearchGroup[] = [];
     if (top.length > 0) groups.push(launcherSearchGroup('top', 'Top results', 'landscape', top));

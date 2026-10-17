@@ -70,6 +70,21 @@ export function scoreNormalizedSearchMatch(
   };
 }
 
+/**
+ * Couch searches often append a year ("The Wedding Banquet 2025"). Catalog
+ * addons treat that as a different title string and return nothing, so strip a
+ * trailing 19xx/20xx before calling searchMeta and keep the year for filtering.
+ */
+export function splitYearFromSearchQuery(query: string): { text: string; year?: string } {
+  const text = query.trim().replace(/\s+/g, ' ');
+  const match = text.match(/^(.*?)(?:\s+|[\(\[])((?:19|20)\d{2})(?:[\)\]])?\s*$/);
+  const title = match?.[1]?.trim() ?? '';
+  if (!match || title.length < 2) {
+    return { text };
+  }
+  return { text: title, year: match[2] };
+}
+
 export function isDescriptiveSearchQuery(query: string): boolean {
   const normalized = normalizeSearchQuery(query);
   const tokens = normalized.split(' ').filter(Boolean);

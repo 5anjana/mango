@@ -94,6 +94,13 @@ for (const fixture of ['ideal_1080p_hdr', '4k_sdr_cached']) {
   });
 }
 
+test('mpv-play re-reads voice.env so film refresh-match is not stuck on catalog boot env', async () => {
+  const source = await readFile(script, 'utf8');
+  const playbackEnv = source.indexOf('source "$REPO_DIR/scripts/lib/mango-playback-env.sh"');
+  const resolveSync = source.indexOf('resolve_video_sync()');
+  assert.ok(playbackEnv >= 0 && resolveSync > playbackEnv);
+});
+
 test('S4: deferred handoff restores automatic audio output when no AO override exists', async () => {
   const source = await readFile(script, 'utf8');
   assert.match(source, /local ao="\$\{MANGO_MPV_AO:-auto\}"/);

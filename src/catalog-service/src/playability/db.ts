@@ -4662,6 +4662,54 @@ LIMIT @limit;
   }));
 }
 
+/**
+ * Pending titles the viewer already opened or searched. They stay out of Home
+ * rails after a play failure, but Search should still find them (with year)
+ * instead of dropping them into a yearless "More movies & shows" duplicate.
+ */
+export async function listQueuedSearchCatalogRows(
+  limit = 500,
+): Promise<VerifiedRailPoolSearchRow[]> {
+  await initPlayabilityDb();
+  const db = openDb();
+  return db.prepare(`
+WITH ranked AS (
+  SELECT
+    rp.type,
+    rp.id,
+    rp.title,
+    rp.poster_url AS poster,
+    rp.year,
+    ROW_NUMBER() OVER (
+      PARTITION BY rp.type, rp.id
+      ORDER BY
+        CASE WHEN rp.poster_url IS NOT NULL AND trim(rp.poster_url) != '' THEN 0 ELSE 1 END,
+        CASE WHEN rp.year IS NOT NULL AND trim(rp.year) != '' THEN 0 ELSE 1 END,
+        rp.ingested_at DESC,
+        rp.rail_id ASC
+    ) AS row_rank
+  FROM rail_pool rp
+  JOIN titles t ON t.type = rp.type AND t.id = rp.id
+  WHERE t.status = 'pending'
+    AND rp.title IS NOT NULL
+    AND trim(rp.title) != ''
+)
+SELECT type, id, title, poster, year
+FROM ranked
+WHERE row_rank = 1
+LIMIT @limit;
+  `).all({
+    limit: Math.max(1, limit),
+  }) as VerifiedRailPoolSearchRow[];
+}
+
+function searchIndexedTitleSql(alias: string, nowRef: string): string {
+  return `(
+    ${visiblePlayableTitleSql(alias, nowRef)}
+    OR ${alias}.status = 'pending'
+  )`;
+}
+
 /** Cheap generation token used by the launcher search index invalidator. */
 export async function playabilitySearchGeneration(): Promise<string> {
   await initPlayabilityDb();
@@ -4672,7 +4720,7 @@ SELECT
   COUNT(*) AS row_count
 FROM rail_pool rp
 JOIN titles t ON t.type = rp.type AND t.id = rp.id
-WHERE ${visiblePlayableTitleSql('t', '@now')}
+WHERE ${searchIndexedTitleSql('t', '@now')}
   AND rp.title IS NOT NULL
   AND trim(rp.title) != '';
 `).get({ now: nowMs() }) as {

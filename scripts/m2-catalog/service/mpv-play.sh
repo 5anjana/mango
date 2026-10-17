@@ -75,6 +75,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="${MANGO_REPO_DIR:-$HOME/mango}"
 # shellcheck source=../../lib/launcher-power.sh
 source "$REPO_DIR/scripts/lib/launcher-power.sh"
+# Re-read voice.env here so film refresh-match is not stuck on the catalog
+# process's boot-time environment (24fps movies were left on 60Hz).
+# shellcheck source=../../lib/mango-playback-env.sh
+source "$REPO_DIR/scripts/lib/mango-playback-env.sh"
 AUDIO_ENV="${HOME}/.config/mango/audio.env"
 if [[ -f "$AUDIO_ENV" ]]; then
   # shellcheck disable=SC1090

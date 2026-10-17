@@ -200,6 +200,33 @@ test('Unified Search preserves a legacy Saved YouTube source before and after as
   });
 });
 
+test('pending titles stay in local Search with year, including year-suffixed queries', () => withSearchServiceTest(async (service) => {
+  await recordVerifyResult({
+    type: 'movie',
+    id: 'tt32214413',
+    status: 'pending',
+    fail_reason: 'play_failure',
+  });
+  await upsertRailPoolTitle({
+    rail_id: 'movies-quick-watches',
+    type: 'movie',
+    id: 'tt32214413',
+    score: 50,
+    title: 'The Wedding Banquet',
+    year: '2025',
+  });
+
+  const byTitle = await service.suggestions('wedding banquet', 'movies', 9);
+  assert.equal(byTitle[0]?.id, 'tt32214413');
+  assert.equal(byTitle[0]?.year, '2025');
+  assert.equal(byTitle[0]?.queued_for_verify, true);
+  assert.equal(byTitle[0]?.in_library, false);
+
+  const byYear = await service.suggestions('the wedding banquet 2025', 'movies', 9);
+  assert.equal(byYear[0]?.id, 'tt32214413');
+  assert.equal(byYear[0]?.subtitle, '2025');
+}));
+
 test('verified Search metadata prefers a duplicate pool row with artwork', () => withSearchServiceTest(async (service) => {
   await recordVerifyResult({
     type: 'movie',

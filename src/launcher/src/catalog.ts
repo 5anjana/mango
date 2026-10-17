@@ -1053,28 +1053,42 @@ async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs?: number)
       ...(init?.headers || {}),
     },
   };
-  try {
-    const response = timeoutMs
-      ? await fetchWithTimeout(url, requestInit, timeoutMs)
-      : await fetch(url, requestInit);
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      if (response.status === 499) {
-        throw new Error("play cancelled");
+  const attempts = timeoutMs ? 3 : 1;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = timeoutMs
+        ? await fetchWithTimeout(url, requestInit, timeoutMs)
+        : await fetch(url, requestInit);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 499) {
+          throw new Error("play cancelled");
+        }
+        const raw = typeof data.error === "string" ? data.error : `HTTP ${response.status}`;
+        throw new CatalogResponseError(response.status, couchSafeCatalogMessage(raw));
       }
-      const raw = typeof data.error === "string" ? data.error : `HTTP ${response.status}`;
-      throw new CatalogResponseError(response.status, couchSafeCatalogMessage(raw));
+      return data as T;
+    } catch (error) {
+      lastError = error;
+      if (error instanceof Error && error.message === "play cancelled") {
+        throw error;
+      }
+      if (isAbortError(error)) {
+        lastError = new CatalogTimeoutError();
+      }
+      const retryable = isAbortError(error)
+        || error instanceof CatalogTimeoutError
+        || (error instanceof CatalogResponseError && error.status >= 500);
+      if (!retryable || attempt === attempts - 1) {
+        break;
+      }
+      await new Promise((resolve) => {
+        globalThis.setTimeout(resolve, 400 * (attempt + 1));
+      });
     }
-    return data as T;
-  } catch (error) {
-    if (error instanceof Error && error.message === "play cancelled") {
-      throw error;
-    }
-    if (isAbortError(error)) {
-      throw new CatalogTimeoutError();
-    }
-    throw error;
   }
+  throw lastError;
 }
 
 function assertCatalogResponseOwner(

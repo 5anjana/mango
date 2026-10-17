@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  catalogMetaYear,
   couchFacingLibraryStatus,
   deriveLibraryVerifyState,
   shouldRequeueFailedExactMatch,
@@ -26,6 +27,13 @@ test('couchFacingLibraryStatus never exposes failed or stale to the companion', 
   assert.equal(couchFacingLibraryStatus('failed'), undefined);
   assert.equal(couchFacingLibraryStatus('stale'), undefined);
   assert.equal(couchFacingLibraryStatus(undefined), undefined);
+});
+
+test('catalogMetaYear reads Cinemeta releaseInfo when year is absent', () => {
+  assert.equal(catalogMetaYear({ releaseInfo: '2025' }), '2025');
+  assert.equal(catalogMetaYear({ year: 1993 }), '1993');
+  assert.equal(catalogMetaYear({ released: '1993-08-04' }), '1993');
+  assert.equal(catalogMetaYear({ name: 'The Wedding Banquet' }), undefined);
 });
 
 test('shouldRequeueFailedExactMatch only for exact-score tombstones', () => {

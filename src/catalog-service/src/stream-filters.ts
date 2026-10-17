@@ -1110,11 +1110,16 @@ export function isDebridStream(stream: Stream): boolean {
   return debridServiceId(stream) !== null;
 }
 
+function isAioStreamsBingeAddon(addonId: string | undefined): boolean {
+  const id = (addonId || '').toLowerCase();
+  return id === 'com.aiostreams' || id === 'aiostreams' || id.startsWith('com.aiostreams.');
+}
+
 function parseAioStreamsBingeGroupCacheStatus(stream: Stream): 'cached' | 'uncached' | null {
   const group = bingeGroup(stream);
   if (!group) return null;
   const addonId = group?.split('|')[0]?.toLowerCase();
-  if (addonId !== 'com.aiostreams' && addonId !== 'aiostreams') return null;
+  if (!isAioStreamsBingeAddon(addonId)) return null;
 
   const parts = group.split('|');
   if (parts.length < 3) return null;
