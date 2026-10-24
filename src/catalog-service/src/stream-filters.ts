@@ -500,7 +500,7 @@ function seriesSeasonReleaseYearMismatchIsAllowed(
   metaId: string | undefined,
   context: Pick<
     StreamFilterContext,
-    'contentType' | 'metaYear' | 'episodeReleaseYear' | 'trustedTitles'
+    'contentType' | 'metaYear' | 'episodeReleaseYear' | 'trustedTitles' | 'requireExplicitEdition'
   >,
   targetEdition: Edition | null,
 ): boolean {
@@ -512,9 +512,9 @@ function seriesSeasonReleaseYearMismatchIsAllowed(
     if ([...years].some((year) => year !== context.episodeReleaseYear)) return false;
     if (!labelHasSeriesSeasonOrEpisodeMarker(label)) return false;
     if (targetImdbIdMatchesLabel(label, metaId)) continue;
-    // Editionless ongoing shows (e.g. "Show (2026) S09E01"): the exact requested
-    // SxxEyy on the same label certifies the episode-year tag.
-    if (!targetEdition) {
+    // Shows without a required edition (e.g. "Koffee With Karan (2026) S09E01"):
+    // the exact requested SxxEyy on the same label certifies the episode-year tag.
+    if (!targetEdition || !context.requireExplicitEdition) {
       if (!labelHasExactTargetEpisode(label, metaId)) return false;
       continue;
     }

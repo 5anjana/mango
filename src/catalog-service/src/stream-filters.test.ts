@@ -862,7 +862,7 @@ test('India edition override requires explicit target-edition evidence for gener
   assert.equal(ranked.meta.excluded.title_mismatch, 4);
 });
 
-test('editionless ongoing series admit episode-year tags only on the exact requested episode', () => {
+test('ongoing series without a required edition admit episode-year tags only on the exact requested episode', () => {
   const release = (filename: string): Stream => ({
     url: `https://example.test/${encodeURIComponent(filename)}.mkv`,
     source: 'AIOStreams',
@@ -877,6 +877,7 @@ test('editionless ongoing series admit episode-year tags only on the exact reque
     metaTitle: 'Koffee With Karan',
     trustedTitles: ['Koffee With Karan'],
     metaYear: 2004,
+    metaCountry: 'India',
     episodeReleaseYear: 2026,
   } as const;
   const match = (filename: string, overrides: Record<string, unknown> = {}) => streamMatchesMetaTitle(
