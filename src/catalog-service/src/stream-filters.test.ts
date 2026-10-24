@@ -862,6 +862,62 @@ test('India edition override requires explicit target-edition evidence for gener
   assert.equal(ranked.meta.excluded.title_mismatch, 4);
 });
 
+test('editionless ongoing series admit episode-year tags only on the exact requested episode', () => {
+  const release = (filename: string): Stream => ({
+    url: `https://example.test/${encodeURIComponent(filename)}.mkv`,
+    source: 'AIOStreams',
+    name: '🚀 FHD',
+    title: '🚀 FHD',
+    description: `🎬 ${filename}`,
+    behaviorHints: { filename, bingeGroup: 'com.aiostreams|torbox|true|1080p' },
+  });
+  const context = {
+    contentType: 'series',
+    metaId: 'tt0445883:9:1',
+    metaTitle: 'Koffee With Karan',
+    trustedTitles: ['Koffee With Karan'],
+    metaYear: 2004,
+    episodeReleaseYear: 2026,
+  } as const;
+  const match = (filename: string, overrides: Record<string, unknown> = {}) => streamMatchesMetaTitle(
+    release(filename),
+    context.metaTitle,
+    (overrides.metaId as string | undefined) ?? context.metaId,
+    { ...context, ...overrides },
+  );
+  assert.equal(
+    match('Koffee.With.Karan.(2026).S09E01.1080p.WEB-DL.H.264.AAC.2.0-DUS.mkv'),
+    true,
+    'live S9E1 release tagged with its air year is admitted',
+  );
+  assert.equal(
+    match('Koffee.With.Karan.S09E01.1080p.WEB-DL.H.264.AAC.2.0-DUS.mkv'),
+    true,
+  );
+  assert.equal(
+    match('Koffee.With.Karan.(2026).S09E01.1080p.WEB-DL.mkv', { episodeReleaseYear: undefined }),
+    false,
+    'without exact episode release metadata the year tag still fails closed',
+  );
+  assert.equal(
+    match('Koffee.With.Karan.(2025).S09E01.1080p.WEB-DL.mkv'),
+    false,
+    'a year other than the episode air year remains a conflict',
+  );
+  assert.equal(
+    match('Koffee.With.Karan.(2026).S09.1080p.WEB-DL.mkv'),
+    false,
+    'season-only labels cannot certify an episode-year tag',
+  );
+  assert.equal(
+    match('Koffee.With.Karan.2023.S08E01.1080p.HS.WEB-DL.AAC.2.0.x264-SK.mkv', {
+      metaId: 'tt0445883:8:1',
+      episodeReleaseYear: 2023,
+    }),
+    true,
+  );
+});
+
 test('live Traitors S2E1 labels fail closed when India only appears as audio/subtitle flags', () => {
   const descriptions = [
     'The Traitors S02 • E01 WEB-DL MeGusta HEVC 0.8GB',

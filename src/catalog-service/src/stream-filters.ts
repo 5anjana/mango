@@ -512,8 +512,14 @@ function seriesSeasonReleaseYearMismatchIsAllowed(
     if ([...years].some((year) => year !== context.episodeReleaseYear)) return false;
     if (!labelHasSeriesSeasonOrEpisodeMarker(label)) return false;
     if (targetImdbIdMatchesLabel(label, metaId)) continue;
+    // Editionless ongoing shows (e.g. "Show (2026) S09E01"): the exact requested
+    // SxxEyy on the same label certifies the episode-year tag.
+    if (!targetEdition) {
+      if (!labelHasExactTargetEpisode(label, metaId)) return false;
+      continue;
+    }
     const releaseLabel = stripReleaseIdentityJunk(label.replace(/[._]/g, ' '));
-    if (!targetEdition || !releaseHasEdition(
+    if (!releaseHasEdition(
       releaseLabel,
       targetEdition,
       metaTitle,
@@ -592,6 +598,15 @@ function targetEpisodeIdentity(metaId?: string): EpisodeIdentityMarker | null {
     }
   }
   return parseEpisodeIdentityMarker(metaId);
+}
+
+function labelHasExactTargetEpisode(label: string, metaId?: string): boolean {
+  const target = targetEpisodeIdentity(metaId);
+  const marker = parseEpisodeIdentityMarker(label);
+  return target?.season != null
+    && marker?.strength === 'full'
+    && marker.season === target.season
+    && marker.episode === target.episode;
 }
 
 function streamEpisodeMarkers(stream: Stream): EpisodeIdentityMarker[] {
