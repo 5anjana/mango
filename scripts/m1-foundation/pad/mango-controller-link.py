@@ -208,6 +208,8 @@ class ControllerLinkSupervisor:
     def _enforce_adapter_policy(self) -> None:
         """Keep the adapter connectable for the bonded Micro without pairable spam."""
         try:
+            if not bool(self.adapter_props.Get("org.bluez.Adapter1", "Connectable")):
+                self.adapter_props.Set("org.bluez.Adapter1", "Connectable", dbus.Boolean(True))
             if bool(self.adapter_props.Get("org.bluez.Adapter1", "Pairable")):
                 self.adapter_props.Set("org.bluez.Adapter1", "Pairable", dbus.Boolean(False))
             if bool(self.adapter_props.Get("org.bluez.Adapter1", "Discoverable")):
