@@ -1225,6 +1225,20 @@ PAD_DEVICE_NAMES = frozenset(
 ) or frozenset({"Pro Controller"})
 
 
+def normalized_abs(dev: evdev.InputDevice, code: int, value: int) -> int:
+    """Scale stick axes to the Pro Controller's +/-32767 so 0..255 pads cross THRESH."""
+    if code not in (ecodes.ABS_X, ecodes.ABS_Y):
+        return value
+    try:
+        info = dev.absinfo(code)
+    except (OSError, KeyError):
+        return value
+    half = (info.max - info.min) / 2
+    if half <= 0 or (info.min < 0 < info.max and info.max >= 1000):
+        return value
+    return int((value - (info.min + half)) * 32767 / half)
+
+
 def find_pro_controller() -> evdev.InputDevice:
     required_keys = {BTN_B, BTN_Y}
     stick_abs = {ecodes.ABS_X, ecodes.ABS_Y}
@@ -1396,13 +1410,14 @@ def run_pad_session(dev: evdev.InputDevice) -> None:
                 last_event_at = time.time()
                 app = routing_app()
                 if event.type == ecodes.EV_ABS:
+                    value = normalized_abs(dev, event.code, event.value)
                     if event.code in (ecodes.ABS_X, ecodes.ABS_HAT0X):
                         threshold = 1 if event.code == ecodes.ABS_HAT0X else THRESH
                         if _playback_app(app) and playback_streams_open():
                             stop_seek_hold()
-                        elif event.value <= -threshold:
+                        elif value <= -threshold:
                             start_or_update_seek_hold(app, "left")
-                        elif event.value >= threshold:
+                        elif value >= threshold:
                             start_or_update_seek_hold(app, "right")
                         else:
                             stop_seek_hold()
@@ -1410,7 +1425,7 @@ def run_pad_session(dev: evdev.InputDevice) -> None:
                         threshold = 1 if event.code == ecodes.ABS_HAT0Y else THRESH
                         stop_seek_hold()
                         if _playback_app(app):
-                            if event.value <= -threshold:
+                            if value <= -threshold:
                                 debounced(
                                     f"{app}-up",
                                     lambda: (
@@ -1420,19 +1435,19 @@ def run_pad_session(dev: evdev.InputDevice) -> None:
                                     ),
                                     debounce_sec=DPAD_DEBOUNCE_SEC,
                                 )
-                            elif event.value >= threshold and playback_streams_open():
+                            elif value >= threshold and playback_streams_open():
                                 debounced(
                                     f"{app}-down",
                                     lambda: route_dpad(app, "down"),
                                     debounce_sec=DPAD_DEBOUNCE_SEC,
                                 )
-                        elif event.value <= -threshold:
+                        elif value <= -threshold:
                             debounced(
                                 f"{app}-up",
                                 lambda: route_dpad(app, "up"),
                                 debounce_sec=DPAD_DEBOUNCE_SEC,
                             )
-                        elif event.value >= threshold:
+                        elif value >= threshold:
                             debounced(
                                 f"{app}-down",
                                 lambda: route_dpad(app, "down"),
