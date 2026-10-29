@@ -76,6 +76,7 @@ if [[ -n "\$mango_status" && "${MANGO_DEPLOY_ALLOW_DIRTY:-0}" != "1" ]]; then
   exit 1
 fi
 git checkout $(printf '%q' "$BRANCH")
+previous="\$(git rev-parse HEAD)"
 git merge --ff-only $(printf '%q' "$EXPECTED")
 actual="\$(git rev-parse HEAD)"
 if [[ "\$actual" != $(printf '%q' "$EXPECTED") ]]; then
@@ -94,6 +95,10 @@ bash scripts/m4-addons/ensure-bharat-binge-export.sh || true
 bash scripts/m6-ship/ensure-youtube-yt-dlp.sh
 if [[ "${MANGO_CONTROLLER_LINK_INSTALL:-0}" == "1" ]]; then
   sudo -n bash scripts/m1-foundation/pad/install-controller-reliability.sh --apply
+elif ! git diff --quiet "\$previous" HEAD -- scripts/m1-foundation/pad/mango-controller-link.py scripts/m1-foundation/pad/controller_link_state.py; then
+  # The root link service is outside the user stack; restart it so it never
+  # keeps running code from an older deploy.
+  sudo -n systemctl try-restart mango-controller-link.service || echo "controller link restart failed" >&2
 fi
 if [[ -f ~/.config/mango/voice.env ]]; then
   # shellcheck disable=SC1091

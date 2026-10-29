@@ -207,6 +207,12 @@ without periodic host Connect or discovery; `host`/`any` allow bounded host
 retries. Unknown modes wait for authoritative metadata rather than guessing.
 The wait state is indefinite and never means pairing has been lost.
 
+Some pads advertise `device` but never page the host after waking (8BitDo
+Zero 2 in Switch mode). For those, set `MANGO_CONTROLLER_HOST_RECONNECT=1` in a
+`mango-controller-link.service` drop-in so the service pages the bonded pad;
+one Start press then reconnects. `pi-deploy.sh` restarts the root link service
+whenever its code changes.
+
 Source and automated gates do not close physical Bluetooth behavior. The
 release gate remains five ordinary power-off/power-on reconnect cycles without
 pairing mode, stack restart, or focus loss.

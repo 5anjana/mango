@@ -233,6 +233,18 @@ class SupervisorTest(unittest.TestCase):
         self.link.tick()
         self.link.device.Connect.assert_not_called()
 
+    def test_host_reconnect_override_pages_device_mode_pads(self):
+        self.link.reconnect_mode = "device"
+        with patch.object(module, "HOST_RECONNECT_OVERRIDE", False):
+            self.assertFalse(self.link._host_reconnect_allowed())
+        with patch.object(module, "HOST_RECONNECT_OVERRIDE", True):
+            self.assertTrue(self.link._host_reconnect_allowed())
+            self.link.reconnect_mode = "unknown"
+            self.assertFalse(self.link._host_reconnect_allowed())
+            self.link.reconnect_mode = "device"
+            self.link.retry.paired = False
+            self.assertFalse(self.link._host_reconnect_allowed())
+
     def test_input_interface_removal_invalidates_contract(self):
         self.link._interfaces_removed(module.DEVICE_PATH, ["org.bluez.Input1"])
         self.assertEqual(self.link.reconnect_mode, "unknown")

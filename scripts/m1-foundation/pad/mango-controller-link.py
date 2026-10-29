@@ -59,6 +59,9 @@ RECONNECT_MODE_REFRESH_SEC = 2.0
 # not part of a device-initiated controller's ordinary-wake path.
 DEVICE_DISCOVERY_DURATION_SEC = 2
 PAIRING_POLICY = "explicit_recovery_only"
+# Some pads (8BitDo Zero 2 in Switch mode) advertise ReconnectMode "device" but
+# never page the host after waking. Opt in to host paging for those pads.
+HOST_RECONNECT_OVERRIDE = os.environ.get("MANGO_CONTROLLER_HOST_RECONNECT", "") == "1"
 
 
 def retry_delays_from_env() -> tuple[float, ...]:
@@ -240,7 +243,11 @@ class ControllerLinkSupervisor:
         self.device_props = dbus.Interface(obj, "org.freedesktop.DBus.Properties")
 
     def _host_reconnect_allowed(self) -> bool:
-        return self.retry.paired is True and self.reconnect_mode in {"host", "any"}
+        if self.retry.paired is not True:
+            return False
+        if HOST_RECONNECT_OVERRIDE and self.reconnect_mode in {"device", "host", "any"}:
+            return True
+        return self.reconnect_mode in {"host", "any"}
 
     def _refresh_reconnect_mode(self) -> None:
         """Read BlueZ's SDP-derived contract; unknown never means host paging."""
