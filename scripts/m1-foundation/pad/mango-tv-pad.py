@@ -1216,13 +1216,22 @@ def route_face(app: str, action: str) -> None:
             )
 
 
+# Evdev names to drive. 8BitDo Zero 2 in D-input mode (B+Start) reports
+# "8BitDo Zero 2 gamepad"; it reconnects on Start, unlike its Switch mode.
+PAD_DEVICE_NAMES = frozenset(
+    name.strip()
+    for name in os.environ.get("MANGO_PAD_DEVICE_NAMES", "Pro Controller").split(",")
+    if name.strip()
+) or frozenset({"Pro Controller"})
+
+
 def find_pro_controller() -> evdev.InputDevice:
     required_keys = {BTN_B, BTN_Y}
     stick_abs = {ecodes.ABS_X, ecodes.ABS_Y}
     hat_abs = {ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y}
     for path in evdev.list_devices():
         dev = evdev.InputDevice(path)
-        if dev.name != "Pro Controller":
+        if dev.name not in PAD_DEVICE_NAMES:
             continue
         caps = dev.capabilities()
         keys = set(caps.get(ecodes.EV_KEY, []))

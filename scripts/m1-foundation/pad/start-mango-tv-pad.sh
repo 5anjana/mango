@@ -35,14 +35,16 @@ pad_running() {
 
 pro_controller_present() {
   python3 - <<'PY'
+import os
 import evdev
 from evdev import ecodes
+names = {n.strip() for n in os.environ.get("MANGO_PAD_DEVICE_NAMES", "Pro Controller").split(",") if n.strip()} or {"Pro Controller"}
 required_keys = {304, 308}
 stick_abs = {ecodes.ABS_X, ecodes.ABS_Y}
 hat_abs = {ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y}
 for path in evdev.list_devices():
     dev = evdev.InputDevice(path)
-    if dev.name != "Pro Controller":
+    if dev.name not in names:
         continue
     caps = dev.capabilities()
     keys = set(caps.get(ecodes.EV_KEY, []))
