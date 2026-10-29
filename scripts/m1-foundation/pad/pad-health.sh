@@ -11,6 +11,13 @@ PID_FILE="${CACHE_DIR}/mango-tv-pad.pid"
 MAX_STATUS_AGE_SEC="${MANGO_PAD_HEALTH_MAX_AGE_SEC:-8}"
 MAX_WAITING_STATUS_AGE_SEC="${MANGO_PAD_WAITING_MAX_AGE_SEC:-20}"
 REPAIR_WAIT_STEPS="${MANGO_PAD_REPAIR_WAIT_STEPS:-24}"
+# Same device-name overlay the pad router reads (run-mango-tv-pad.sh).
+for pad_env in /etc/mango/pad.env "${HOME}/.config/mango/pad.env"; do
+  if [[ -r "$pad_env" ]]; then
+    MANGO_PAD_DEVICE_NAMES="$(set +u; source "$pad_env" >/dev/null 2>&1; printf '%s' "${MANGO_PAD_DEVICE_NAMES:-}")"
+    [[ -n "$MANGO_PAD_DEVICE_NAMES" ]] && export MANGO_PAD_DEVICE_NAMES
+  fi
+done
 
 QUIET=0
 JSON=0
@@ -35,6 +42,7 @@ say() {
 
 current_controller_path() {
   python3 - <<'PY'
+import os
 import sys
 try:
     import evdev
@@ -42,12 +50,13 @@ try:
 except ImportError:
     raise SystemExit(2)
 
+names = {n.strip() for n in os.environ.get("MANGO_PAD_DEVICE_NAMES", "Pro Controller").split(",") if n.strip()} or {"Pro Controller"}
 required_keys = {304, 308}
 stick_abs = {ecodes.ABS_X, ecodes.ABS_Y}
 hat_abs = {ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y}
 for path in evdev.list_devices():
     dev = evdev.InputDevice(path)
-    if dev.name != "Pro Controller":
+    if dev.name not in names:
         continue
     caps = dev.capabilities()
     keys = set(caps.get(ecodes.EV_KEY, []))
