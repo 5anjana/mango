@@ -96,6 +96,14 @@ button. Neither replaces the title.
 `--blend-subtitles` defaults to **no** (ASS overlay): `yes` stalls 4K present
 when audio is decoded (~2.5 drops/s on Pi 5 / X11 EGL). Override only for A/B
 via `MANGO_MPV_BLEND_SUBTITLES`.
+VOD `--opengl-swapinterval` defaults to **0** (`MANGO_MPV_VOD_SWAPINTERVAL`).
+With interval 1 the vsynced swap blocks the VO thread ~40 ms per hwdec=drm
+frame regardless of refresh rate (measured 2026-10-29 at 1080p60/120, 4K30 and
+4K23.98), so 4K HEVC runs at ~18 fps: ~6 drops/s, or 0.75x speed when the clock
+yields instead. Interval 0 measured 0 drops at 1.00x in every mode with HDMI
+audio; the swap no longer waits, so the Present flip may land mid-scanout.
+If tearing is seen on pans, set the interval back to 1 and cap the ladder at
+1080p rather than accepting the 4K drops.
 
 **Deferred foreground handoff.** When `MANGO_MPV_DEFER_FOREGROUND=1` (default
 when `MANGO_MPV_STOP_LAUNCHER=1`, set by `mpv`/`mpv-hifi` profiles), `mpv-play.sh`

@@ -943,9 +943,15 @@ append_mpv_vod_startup_policy_args() {
   fi
   append_mpv_subtitle_startup_args
   append_mpv_cache_args
-  case "${MANGO_MPV_VOD_SWAPINTERVAL:-1}" in
-    0 | no | false) ;;
-    *) mpv_args+=(--opengl-swapinterval="${MANGO_MPV_VOD_SWAPINTERVAL:-1}") ;;
+  # Default 0: on Pi 5 / X11 EGL a vsynced (interval 1) eglSwapBuffers blocks
+  # the VO thread ~40 ms per frame on hwdec=drm frames, independent of refresh
+  # rate (measured identical at 1080p60/120, 4K30, 4K23.98), so 4K HEVC
+  # plays at ~18 fps: ~6 drops/s or 0.75x speed. Interval 0 measured 0 drops at
+  # 1.00x on the same file in every mode, with HDMI audio and A/V sync intact.
+  # Set MANGO_MPV_VOD_SWAPINTERVAL=1 to A/B the old tear-free-but-stuttering path.
+  case "${MANGO_MPV_VOD_SWAPINTERVAL:-0}" in
+    0 | no | false) mpv_args+=(--opengl-swapinterval=0) ;;
+    *) mpv_args+=(--opengl-swapinterval="${MANGO_MPV_VOD_SWAPINTERVAL}") ;;
   esac
   append_mpv_hud_args
   append_mpv_volume_scale_args

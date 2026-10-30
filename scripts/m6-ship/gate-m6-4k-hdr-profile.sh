@@ -128,9 +128,9 @@ fi
   && gate_pass "mpv deferred foreground handoff enabled" \
   || gate_fail "mpv deferred foreground handoff disabled"
 
-[[ "${MANGO_MPV_VOD_SWAPINTERVAL:-1}" == "1" ]] \
-  && gate_pass "mpv VOD swap interval pinned for tear-free X11" \
-  || gate_warn "mpv VOD swap interval not 1 (${MANGO_MPV_VOD_SWAPINTERVAL:-unset})"
+[[ "${MANGO_MPV_VOD_SWAPINTERVAL:-0}" == "0" ]] \
+  && gate_pass "mpv VOD swap interval 0 (non-blocking present; interval 1 stalls 4K HEVC at ~18 fps)" \
+  || gate_warn "mpv VOD swap interval not 0 (${MANGO_MPV_VOD_SWAPINTERVAL:-unset}) — expect ~6 drops/s at 4K"
 
 if [[ -f /etc/mango/catalog-filters.json && -n "${MANGO_CATALOG_FILTERS:-}" && -f "${MANGO_CATALOG_FILTERS}" ]]; then
   if cmp -s "${MANGO_CATALOG_FILTERS}" /etc/mango/catalog-filters.json; then
