@@ -87,7 +87,7 @@ test('request-scoped cancellation prevents a delayed resolve from invoking play'
       source: 'AIOStreams',
       title: '[TB⚡] Torrentio 1080p',
       description: 'WEB-DL 1080p',
-      behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+      behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
     }], config, {
       playEpoch: epoch,
       preflight: async () => {

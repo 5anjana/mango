@@ -55,7 +55,7 @@ function candidate(url: string, name = '[TB☁️⚡] Torrentio 1080p'): Stream 
     title: name,
     description: 'WEB-DL 1080p',
     behaviorHints: {
-      bingeGroup: 'com.aiostreams|torbox|true|1080p',
+      bingeGroup: 'com.aiostreams|torbox|cached|1080p',
     },
   };
 }
@@ -207,7 +207,7 @@ test('playWithLadder skips nfo sidecars and reaches a later smooth candidate', a
     '[TB☁️⚡] Torrentio 1080p alternate',
   );
   good.description = '1080p HEVC encode';
-  good.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|true|1080p-alt' };
+  good.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|cached|1080p-alt' };
 
   const result = await playWithLadder([bad, good], testConfig(), {
     verified_hint: {
@@ -236,7 +236,7 @@ test('probeWithLadder can reject uncached fallback for durable verification', as
     'https://example.test/uncached.mkv',
     '[TB⚡] Torrentio 1080p',
   );
-  stream.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|false|1080p' };
+  stream.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|uncached|1080p' };
   let probeCalls = 0;
 
   const result = await probeWithLadder([stream], testConfig(), {
@@ -303,7 +303,7 @@ test('playWithLadder falls through to obligation floor when preference ladder ca
   // so Phase A skips it and Phase B must still play it.
   const ladderOnly = candidate('https://example.test/ladder-hevc.mkv', '[TB☁️⚡] Torrentio 1080p HEVC');
   ladderOnly.description = 'WEB-DL 1080p x265';
-  ladderOnly.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|true|1080p' };
+  ladderOnly.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|cached|1080p' };
 
   const floorOnly: Stream = {
     url: 'https://example.test/floor-x264.mkv',
@@ -671,7 +671,7 @@ test('known-risk main candidate waits behind a smooth last-resort candidate', as
   smooth1080.description = '1080p HEVC SDR WEB-DL';
   smooth1080.cache_status = 'uncached';
   smooth1080.behaviorHints = {
-    bingeGroup: 'com.aiostreams|torbox|false|1080p',
+    bingeGroup: 'com.aiostreams|torbox|uncached|1080p',
   };
   const probeCalls: string[] = [];
   const playCalls: string[] = [];
@@ -837,11 +837,11 @@ test('auto_play_max_attempts is global across main and last-resort phases', asyn
   const main = candidate('https://example.test/global-main.mkv');
   const resortOne = candidate('https://example.test/global-resort-one.mkv', '[TB⏳] Torrentio 720p A');
   resortOne.cache_status = 'uncached';
-  resortOne.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|false|720p-a' };
+  resortOne.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|uncached|720p-a' };
   resortOne.description = '720p WEBRip x264';
   const resortTwo = candidate('https://example.test/global-resort-two.mkv', '[TB⏳] Torrentio 720p B');
   resortTwo.cache_status = 'uncached';
-  resortTwo.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|false|720p-b' };
+  resortTwo.behaviorHints = { bingeGroup: 'com.aiostreams|torbox|uncached|720p-b' };
   resortTwo.description = '720p WEBRip x264';
   const mainLadder = [{
     step: 'main_cached',

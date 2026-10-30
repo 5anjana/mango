@@ -31,7 +31,7 @@ function stream(description: string, url: string): Stream {
     title: '[TB⚡] Torrentio 1080p',
     description,
     behaviorHints: {
-      bingeGroup: 'com.aiostreams|torbox|true|1080p',
+      bingeGroup: 'com.aiostreams|torbox|cached|1080p',
     },
   };
 }
@@ -60,13 +60,13 @@ test('parseDebridCacheStatus reads AIOStreams instance bingeGroup ids', () => {
     url: 'https://example.test/cached.mp4',
     source: 'AIOStreams',
     name: '🚀 FHD',
-    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|torbox|cached|1080p' },
   };
   const uncached: Stream = {
     url: 'https://example.test/uncached.mp4',
     source: 'AIOStreams',
     name: '🚀 FHD',
-    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|realdebrid|false|1080p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|realdebrid|uncached|1080p' },
   };
   assert.equal(parseDebridCacheStatus(cached), 'cached');
   assert.equal(parseDebridCacheStatus(uncached), 'uncached');
@@ -110,17 +110,60 @@ test('W2: parseDebridCacheStatus also reads AIOStreams Torrentio formatter cache
   assert.equal(parseDebridCacheStatus(uncached), 'uncached');
 });
 
-test('parseDebridCacheStatus trusts legacy explicit AIOStreams bingeGroup over display badge', () => {
+test('parseDebridCacheStatus trusts the explicit AIOStreams `cached` autoplay attribute over display badges', () => {
   const uncached: Stream = {
     url: 'https://example.test/explicit-uncached.mp4',
     source: 'AIOStreams',
     name: '[TB⚡] Torrentio 1080p',
     title: '[TB⚡] Torrentio 1080p',
     behaviorHints: {
-      bingeGroup: 'com.aiostreams|torbox|false|1080p',
+      bingeGroup: 'com.aiostreams|torbox|uncached|1080p',
     },
   };
   assert.equal(parseDebridCacheStatus(uncached), 'uncached');
+});
+
+test('parseDebridCacheStatus ignores the AIOStreams `proxied` boolean and reads the Ready badge', () => {
+  // Captured from the Pi (2026-10-29): every TorBox row carried `|torbox|uncached|…`
+  // (proxied=false) while the description badge said whether TorBox had the file.
+  const base = {
+    source: 'AIOStreams',
+    name: '🔥4K UHD',
+    title: '🔥4K UHD',
+  };
+  const ready: Stream = {
+    ...base,
+    url: 'https://example.test/ready.mkv',
+    description: '🎬 Sense And Sensibility (1995) \n🎥 BluRay 📺 10bit 🎞️ HEVC ⏱️ 2h:16m:16s \n📦 6.76 GB 📊 6.61 Mbps \n🏷️ YTS 📡 YTS \n⚡Ready (TB) 📌 Library 🔍Knaben ',
+    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|torbox|false|2160p|BluRay|HEVC|AAC|10bit|YTS' },
+  };
+  const notReady: Stream = {
+    ...base,
+    url: 'https://example.test/not-ready.mkv',
+    description: '🎬 Sense And Sensibility (1995) \n🎥 BluRay 🎞️ HEVC \n📦 84.5 GB 📊 82.9 Mbps \n🏷️ GUHZER 📡 Comet|Ygg API \n❌ Not Ready (TB) 🔍Comet ',
+    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|torbox|false|2160p|BluRay|HEVC|Atmos|TrueHD|Multi|GUHZER' },
+  };
+  const proxiedTrueNoBadge: Stream = {
+    ...base,
+    url: 'https://example.test/proxied.mkv',
+    description: '🎬 Sense And Sensibility (1995) \n📦 9.9 GB \n📡 MagnetDL 🔍Torrentio ',
+    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|torbox|true|1080p|BluRay|AVC' },
+  };
+  assert.equal(parseDebridCacheStatus(ready), 'cached');
+  assert.equal(parseDebridCacheStatus(notReady), 'uncached');
+  assert.equal(parseDebridCacheStatus(proxiedTrueNoBadge), 'unknown');
+});
+
+test('parseDebridCacheStatus does not read a bare "ready" release word as a badge', () => {
+  const stream: Stream = {
+    url: 'https://example.test/ready-player.mkv',
+    source: 'AIOStreams',
+    name: '🚀 FHD',
+    title: '🚀 FHD',
+    description: '🎬 Ready Player One (2018) \n🎥 BluRay 🎞️ HEVC \n📦 4.1 GB 📡 YTS 🔍Knaben ',
+    behaviorHints: { bingeGroup: 'com.aiostreams.viren070|torbox|false|1080p|BluRay|HEVC' },
+  };
+  assert.equal(parseDebridCacheStatus(stream), 'unknown');
 });
 
 test('parseFilterOverridesFromQuery splits hard language from soft preference', () => {
@@ -133,12 +176,12 @@ test('S5: verified identity survives signed URL rotation but not a distinct rele
   const original = {
     ...englishStream,
     url: 'https://example.test/movie.mkv?token=one',
-    behaviorHints: { infoHash: 'abc123', bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { infoHash: 'abc123', bingeGroup: 'aiostreams|torbox|cached|1080p' },
   };
   const rotated = { ...original, url: 'https://example.test/movie.mkv?token=two' };
   const distinct = {
     ...rotated,
-    behaviorHints: { infoHash: 'different', bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { infoHash: 'different', bingeGroup: 'aiostreams|torbox|cached|1080p' },
   };
   const hint = { win_url_hash: streamStableIdentity(original) };
   assert.equal(streamMatchesVerifiedHint(rotated, hint), true);
@@ -149,7 +192,7 @@ test('S5: generic long binge-group tokens never merge distinct releases', () => 
   const first = {
     ...englishStream,
     url: 'https://example.test/first.mkv?token=one',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p|torrentio' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p|torrentio' },
   };
   const second = {
     ...first,
@@ -163,7 +206,7 @@ test('S5: a hash-bearing binge group survives signed URL rotation', () => {
   const original = {
     ...englishStream,
     url: 'https://example.test/movie.mkv?token=one',
-    behaviorHints: { bingeGroup: `aiostreams|torbox|true|1080p|${hash}` },
+    behaviorHints: { bingeGroup: `aiostreams|torbox|cached|1080p|${hash}` },
   };
   const rotated = {
     ...original,
@@ -192,7 +235,7 @@ test('preferred_hdr_tags boosts HDR-capable 2160p streams without requiring HDR'
     name: '[TB⚡] Torrentio 2160p',
     title: '[TB⚡] Torrentio 2160p',
     description: 'WEB-DL 2160p HEVC',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const hdr: Stream = {
     url: 'https://example.test/hdr.mkv',
@@ -200,7 +243,7 @@ test('preferred_hdr_tags boosts HDR-capable 2160p streams without requiring HDR'
     name: '[TB⚡] Torrentio 2160p',
     title: '[TB⚡] Torrentio 2160p',
     description: 'WEB-DL 2160p HEVC HDR10',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const config = {
     ...testConfig({ max_quality: '2160p' }),
@@ -219,7 +262,7 @@ test('preferred_hdr_tags does not boost DV-only streams unless configured', () =
     name: '[TB⚡] Torrentio 2160p',
     title: '[TB⚡] Torrentio 2160p',
     description: 'WEB-DL 2160p HEVC HDR10',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const dv: Stream = {
     url: 'https://example.test/dv.mkv',
@@ -227,7 +270,7 @@ test('preferred_hdr_tags does not boost DV-only streams unless configured', () =
     name: '[TB⚡] Torrentio 2160p',
     title: '[TB⚡] Torrentio 2160p',
     description: 'WEB-DL 2160p HEVC DV',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const config = {
     ...testConfig({ max_quality: '2160p' }),
@@ -245,7 +288,7 @@ test('preferred_video_codecs boosts 2160p HEVC over CPU-hostile AVC', () => {
     name: '[TB⚡] Torrentio 2160p',
     title: '[TB⚡] Torrentio 2160p',
     description: 'WEB-DL 2160p AVC',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const hevc: Stream = {
     url: 'https://example.test/hevc.mkv',
@@ -253,7 +296,7 @@ test('preferred_video_codecs boosts 2160p HEVC over CPU-hostile AVC', () => {
     name: '[TB⚡] Torrentio 2160p',
     title: '[TB⚡] Torrentio 2160p',
     description: 'WEB-DL 2160p HEVC',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const config = {
     ...testConfig({ max_quality: '2160p' }),
@@ -269,17 +312,17 @@ test('streamHardwareDecodeSmooth: HEVC any-res smooth, non-HEVC only <=1080p', (
   const hevc4k: Stream = {
     url: 'https://example.test/hevc4k.mkv', source: 'AIOStreams',
     name: '[TB⚡] Torrentio 2160p', title: '[TB⚡] Torrentio 2160p', description: 'WEB-DL 2160p HEVC',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const av14k: Stream = {
     url: 'https://example.test/av14k.mkv', source: 'AIOStreams',
     name: '[TB⚡] Torrentio 2160p', title: '[TB⚡] Torrentio 2160p', description: 'WEB-DL 2160p AV1',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const avc1080: Stream = {
     url: 'https://example.test/avc1080.mkv', source: 'AIOStreams',
     name: '[TB⚡] Torrentio 1080p', title: '[TB⚡] Torrentio 1080p', description: 'WEB-DL 1080p AVC',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|1080p' },
   };
   const unknownRes: Stream = {
     url: 'https://example.test/unknown.mkv', source: 'AIOStreams',
@@ -295,12 +338,12 @@ test('hardware-decode tiebreak ranks 4K HEVC over 4K AV1 with no preferred codec
   const av14k: Stream = {
     url: 'https://example.test/av14k.mkv', source: 'AIOStreams',
     name: '[TB⚡] Torrentio 2160p', title: '[TB⚡] Torrentio 2160p', description: 'WEB-DL 2160p AV1',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const hevc4k: Stream = {
     url: 'https://example.test/hevc4k.mkv', source: 'AIOStreams',
     name: '[TB⚡] Torrentio 2160p', title: '[TB⚡] Torrentio 2160p', description: 'WEB-DL 2160p HEVC',
-    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|2160p' },
   };
   const config = {
     ...testConfig({ max_quality: '2160p' }),
@@ -467,7 +510,7 @@ test('same-name series editions use country, start year, and episode title witho
     description: `📁 ${description}`,
     behaviorHints: {
       filename,
-      bingeGroup: 'com.aiostreams|torbox|true|1080p',
+      bingeGroup: 'com.aiostreams|torbox|cached|1080p',
     },
   });
   const officeUk = {
@@ -541,7 +584,7 @@ test('India edition override requires explicit target-edition evidence for gener
     description: `📁 ${description}`,
     behaviorHints: {
       filename,
-      bingeGroup: 'com.aiostreams|torbox|true|1080p',
+      bingeGroup: 'com.aiostreams|torbox|cached|1080p',
     },
   });
   const context = {
@@ -702,7 +745,7 @@ test('India edition override requires explicit target-edition evidence for gener
       name: '[TB⚡] Comet 1080p',
       title: '[TB⚡] Comet 1080p',
       description: `📁 ${confirmedFilename}`,
-      behaviorHints: { bingeGroup: 'com.aiostreams|torbox|true|1080p' },
+      behaviorHints: { bingeGroup: 'com.aiostreams|torbox|cached|1080p' },
     }, context.metaTitle, context.metaId, confirmedContext),
     false,
     'content-confirmed release matching never trusts description/title without behaviorHints.filename',
@@ -869,7 +912,7 @@ test('ongoing series without a required edition admit episode-year tags only on 
     name: '🚀 FHD',
     title: '🚀 FHD',
     description: `🎬 ${filename}`,
-    behaviorHints: { filename, bingeGroup: 'com.aiostreams|torbox|true|1080p' },
+    behaviorHints: { filename, bingeGroup: 'com.aiostreams|torbox|cached|1080p' },
   });
   const context = {
     contentType: 'series',

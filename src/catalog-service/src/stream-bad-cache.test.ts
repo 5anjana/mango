@@ -40,7 +40,7 @@ function candidate(url: string, name = '[TB☁️⚡] Torrentio 1080p'): Stream 
     title: name,
     description: 'WEB-DL 1080p',
     behaviorHints: {
-      bingeGroup: 'com.aiostreams|torbox|true|1080p',
+      bingeGroup: 'com.aiostreams|torbox|cached|1080p',
     },
   };
 }
@@ -155,7 +155,7 @@ test('S5: confirmed NFO follows a stable release across rotated signed URLs', as
   const first = candidate('https://example.test/release.mkv?token=one');
   first.behaviorHints = {
     infoHash: 'ABC123',
-    bingeGroup: 'aiostreams|torbox|true|1080p',
+    bingeGroup: 'aiostreams|torbox|cached|1080p',
   };
   const rotated = { ...first, url: 'https://example.test/release.mkv?token=two' };
   await playWithLadder([first], testConfig(), {
@@ -185,7 +185,7 @@ test('S5: confirmed NFO follows a stable release across rotated signed URLs', as
 test('S5: TorBox transient does not hide the same infoHash on Real-Debrid', async () => {
   clearStreamBadCache();
   const torbox = candidate('https://example.test/tb-signed.mkv');
-  torbox.behaviorHints = { infoHash: 'samehash', bingeGroup: 'aiostreams|torbox|true|1080p' };
+  torbox.behaviorHints = { infoHash: 'samehash', bingeGroup: 'aiostreams|torbox|cached|1080p' };
   await playWithLadder([torbox], testConfig(), {
     mode: 'picker',
     preferUrl: torbox.url,
@@ -197,7 +197,7 @@ test('S5: TorBox transient does not hide the same infoHash on Real-Debrid', asyn
 
   const realDebrid: Stream = {
     ...candidate('https://example.test/rd-signed.mkv', '[RD☁️⚡] Torrentio 1080p'),
-    behaviorHints: { infoHash: 'samehash', bingeGroup: 'aiostreams|realdebrid|true|1080p' },
+    behaviorHints: { infoHash: 'samehash', bingeGroup: 'aiostreams|realdebrid|cached|1080p' },
   };
   let playCalls = 0;
   const result = await playWithLadder([realDebrid], testConfig(), {

@@ -22,7 +22,7 @@ function stream(url: string, description: string): Stream {
     title: description,
     description,
     behaviorHints: {
-      bingeGroup: `com.aiostreams|torbox|true|${url}`,
+      bingeGroup: `com.aiostreams|torbox|cached|${url}`,
     },
   };
 }

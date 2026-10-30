@@ -1130,22 +1130,40 @@ function isAioStreamsBingeAddon(addonId: string | undefined): boolean {
   return id === 'com.aiostreams' || id === 'aiostreams' || id.startsWith('com.aiostreams.');
 }
 
+/**
+ * AIOStreams `bingeGroup` = `<addon id>|<autoplay attribute>|…`, where the
+ * attributes are whatever the user's AIOStreams config lists (service,
+ * proxied, resolution, quality, …). Only the `cached` attribute carries cache
+ * state, and it is emitted as the literal words `cached` / `uncached`. A bare
+ * `true` / `false` is the `proxied` attribute: it says nothing about the
+ * debrid cache, so it must never be read as one (every TorBox stream came
+ * through as `|torbox|false|…` while its badge said `⚡Ready (TB)`).
+ */
 function parseAioStreamsBingeGroupCacheStatus(stream: Stream): 'cached' | 'uncached' | null {
   const group = bingeGroup(stream);
   if (!group) return null;
-  const addonId = group?.split('|')[0]?.toLowerCase();
-  if (!isAioStreamsBingeAddon(addonId)) return null;
-
   const parts = group.split('|');
-  if (parts.length < 3) return null;
+  if (!isAioStreamsBingeAddon(parts[0]?.toLowerCase())) return null;
 
-  const service = parts[1]?.toLowerCase();
-  if (!service || !DEBRID_SERVICE_IDS.has(service)) return null;
-
-  const flag = parts[2]?.toLowerCase();
-  if (flag === 'true') return 'cached';
-  if (flag === 'false') return 'uncached';
+  for (const part of parts.slice(1)) {
+    const token = part.trim().toLowerCase();
+    if (token === 'cached') return 'cached';
+    if (token === 'uncached') return 'uncached';
+  }
   return null;
+}
+
+/**
+ * Current AIOStreams formatters put the debrid badge in the description:
+ * `⚡Ready (TB)` for an instantly available file, `❌ Not Ready (TB)` for one
+ * the debrid service still has to download. The service tag in parentheses is
+ * required so unrelated "ready" words in release names are not read as a badge.
+ */
+function parseAioStreamsReadyBadgeCacheStatus(stream: Stream): 'cached' | 'uncached' | null {
+  const text = `${stream.name || ''} ${stream.title || ''} ${stream.description || ''}`;
+  const match = text.match(/\b(not\s+ready|ready)\s*\(\s*[A-Za-z]{2,4}\s*\)/i);
+  if (!match) return null;
+  return /^not/i.test(match[1]) ? 'uncached' : 'cached';
 }
 
 /**
@@ -1172,6 +1190,9 @@ export function parseDebridCacheStatus(stream: Stream): 'cached' | 'uncached' | 
   const haystack = streamHaystack(stream);
   if (/\bnot cached\b|\buncached\b/.test(haystack)) return 'uncached';
   if (/\bcached\b/.test(haystack) && !/\bnot cached\b|\buncached\b/.test(haystack)) return 'cached';
+
+  const fromBadge = parseAioStreamsReadyBadgeCacheStatus(stream);
+  if (fromBadge) return fromBadge;
 
   const fromName = parseAioStreamsNameCacheStatus(stream);
   if (fromName) return fromName;

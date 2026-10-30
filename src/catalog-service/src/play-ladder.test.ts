@@ -36,12 +36,12 @@ test('streamMatchesLadderStep rejects uncached streams on ideal step', () => {
   const cached = stream({
     url: 'https://example.test/cached.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const uncached = stream({
     url: 'https://example.test/uncached.mkv',
     name: '[TB⚡] Torrentio 1080p',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|false|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|uncached|1080p' },
   });
   assert.equal(streamMatchesLadderStep(cached, ideal), true);
   assert.equal(streamMatchesLadderStep(uncached, ideal), false);
@@ -81,7 +81,7 @@ test('streamMatchesLadderStep rejects 1440p when capped to 1080p', () => {
     name: '[TB⚡] Torrentio 1440p',
     title: '[TB⚡] Torrentio 1440p',
     description: 'WEB-DL HEVC 1440p',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1440p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1440p' },
   });
 
   assert.equal(streamMatchesLadderStep(highResolution, safe1080), false);
@@ -97,12 +97,12 @@ test('streamMatchesLadderStep honors min_quality for 4k-only steps', () => {
   const hd = stream({
     url: 'https://example.test/1080p.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const uhd = stream({
     url: 'https://example.test/2160p.mkv',
     name: '[TB☁️⚡] Torrentio 2160p',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
 
   assert.equal(streamMatchesLadderStep(hd, fourKOnly), false);
@@ -122,19 +122,19 @@ test('streamMatchesLadderStep rejects non-HEVC above 1080p when require_hevc is 
     url: 'https://example.test/2160p-hevc.mkv',
     name: '[TB☁️⚡] Torrentio 2160p',
     description: '2160p REMUX HEVC BL+RPU HDR10',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const uhdAv1 = stream({
     url: 'https://example.test/2160p-av1.mkv',
     name: '[TB☁️⚡] Torrentio 2160p',
     description: '2160p WEB-DL AV1 10bit',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const uhdH264 = stream({
     url: 'https://example.test/2160p-h264.mkv',
     name: '[TB☁️⚡] Torrentio 2160p',
     description: '2160p REMUX AVC h264',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
 
   assert.equal(streamMatchesLadderStep(uhdHevc, fourKHevcOnly), true);
@@ -153,7 +153,7 @@ test('streamMatchesLadderStep allows non-HEVC at 1080p even when require_hevc is
     url: 'https://example.test/1080p-h264.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
     description: '1080p BluRay x264',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
 
   assert.equal(streamMatchesLadderStep(hd264, step), true);
@@ -182,13 +182,13 @@ test('streamMatchesLadderStep drops HDR above 1080p when exclude_hdr is set', ()
     url: 'https://example.test/2160p-sdr.mkv',
     name: '[TB☁️⚡] Torrentio 2160p',
     description: '2160p REMUX HEVC SDR',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const uhdHdr = stream({
     url: 'https://example.test/2160p-hdr.mkv',
     name: '[TB☁️⚡] Torrentio 2160p',
     description: '2160p REMUX HEVC HDR10 DV',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
 
   assert.equal(streamMatchesLadderStep(uhdSdr, sdr4kStep), true);
@@ -206,7 +206,7 @@ test('streamMatchesLadderStep allows HDR at 1080p even when exclude_hdr is set',
     url: 'https://example.test/1080p-hdr.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
     description: '1080p BluRay x265 HDR10',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
 
   assert.equal(streamMatchesLadderStep(hdHdr, step), true);
@@ -288,7 +288,7 @@ test('expandPlayLadder returns empty when only HDR 4K streams exist on SDR-only 
     url: 'https://example.test/dark-knight.mkv',
     name: '[TB☁️⚡] Torrentio 2160p',
     description: '2160p BluRay HEVC DV HDR10 REMUX',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const ranked = expandPlayLadder([hdrRemux], ladder, { contentType: 'movie' }, {
     strict_unknown_cache: true,
@@ -308,7 +308,7 @@ test('expandPlayLadder walks steps after ideal failures', () => {
       url: 'https://example.test/good.mkv',
       name: '[TB⚡] Torrentio 2160p',
       description: 'IAMABLE x265 encode',
-      behaviorHints: { bingeGroup: 'aiostreams|torbox|false|2160p' },
+      behaviorHints: { bingeGroup: 'aiostreams|torbox|uncached|2160p' },
     }),
   ];
 
@@ -329,14 +329,14 @@ test('expandPlayLadder interleaves debrid services so flaky TorBox cannot starve
     url: `https://example.test/tb-${i + 1}.mkv`,
     name: '[TB☁️⚡] Torrentio 1080p',
     description: i === 0 ? '1080p WEB-DL HDR10' : '1080p WEB-DL',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   }));
   // 4 RD streams that only become eligible at the "2160p_encode" step.
   const rdStreams = Array.from({ length: 4 }, (_, i) => stream({
     url: `https://example.test/rd-${i + 1}.mkv`,
     name: '[RD☁️⚡] Torrentio 2160p',
     description: '2160p WEB-DL HEVC x265',
-    behaviorHints: { bingeGroup: 'aiostreams|realdebrid|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|realdebrid|cached|2160p' },
   }));
 
   const ranked = expandPlayLadder([...tbStreams, ...rdStreams], ladder, { contentType: 'movie' }, {
@@ -356,19 +356,19 @@ test('expandPlayLadder applies fidelity ranking even when only one debrid servic
       url: 'https://example.test/tb-a.mkv',
       name: '[TB☁️⚡] Torrentio 1080p',
       description: '1080p WEB-DL',
-      behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+      behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
     }),
     stream({
       url: 'https://example.test/tb-b.mkv',
       name: '[TB☁️⚡] Torrentio 1080p',
       description: '1080p WEB-DL',
-      behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+      behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
     }),
     stream({
       url: 'https://example.test/tb-c.mkv',
       name: '[TB⚡] Torrentio 2160p',
       description: '2160p HEVC encode',
-      behaviorHints: { bingeGroup: 'aiostreams|torbox|false|2160p' },
+      behaviorHints: { bingeGroup: 'aiostreams|torbox|uncached|2160p' },
     }),
   ];
 
@@ -388,13 +388,13 @@ test('expandPlayLadder preserves within-service quality ranking after diversific
     url: `https://example.test/tb-${i + 1}.mkv`,
     name: '[TB☁️⚡] Torrentio 1080p',
     description: i === 0 ? '1080p WEB-DL HDR10' : '1080p WEB-DL',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   }));
   const rdStreams = Array.from({ length: 4 }, (_, i) => stream({
     url: `https://example.test/rd-${i + 1}.mkv`,
     name: '[RD☁️⚡] Torrentio 2160p',
     description: '2160p WEB-DL HEVC x265',
-    behaviorHints: { bingeGroup: 'aiostreams|realdebrid|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|realdebrid|cached|2160p' },
   }));
 
   const ranked = expandPlayLadder([...tbStreams, ...rdStreams], ladder, { contentType: 'movie' }, {
@@ -420,13 +420,13 @@ test('expandPlayLadder can exclude uncached candidates for durable verification'
   const cached = stream({
     url: 'https://example.test/cached.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const uncached = stream({
     url: 'https://example.test/uncached.mkv',
     name: '[TB⚡] Torrentio 2160p',
     description: '2160p HEVC encode',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|false|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|uncached|2160p' },
   });
 
   const ranked = expandPlayLadder([uncached, cached], ladder, { contentType: 'movie' }, {
@@ -444,13 +444,13 @@ test('expandPlayLadder prefers picker win_url_hash on ideal step', () => {
     url: 'https://example.test/picked.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
     description: 'FLUX x265',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const other = stream({
     url: 'https://example.test/other.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
     description: 'SM737 x265',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
 
   const ranked = expandPlayLadder([other, picked], ladder, { contentType: 'movie' }, {
@@ -469,7 +469,7 @@ test('injectPreferredPlayCandidate forces a picker URL ahead of ladder expansion
     name: '[TB⚡] Torrentio 2160p',
     description: '2160p REMUX HEVC SDR',
     ladder_step: '4k_sdr_remux_cached',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const ranked = injectPreferredPlayCandidate(
     [picked],
@@ -486,7 +486,7 @@ test('injectPreferredPlayCandidate uses expanded ladder step when resolve stream
     url: 'https://example.test/picked-4k.mkv',
     name: '[TB⚡] Torrentio 2160p',
     description: '2160p WEBRip HEVC SDR',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const expanded = expandPlayLadder([picked], defaultPlayLadder(), { contentType: 'movie' }, {
     max_candidates: 4,
@@ -504,7 +504,7 @@ test('injectPreferredPlayCandidate prefers explicit prefer_ladder_step over pick
     url: 'https://example.test/picked-4k.mkv',
     name: '[TB⚡] Torrentio 2160p',
     description: '2160p WEBRip HEVC SDR',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const ranked = injectPreferredPlayCandidate([picked], [], picked.url, '2160p_encode');
   assert.equal(ranked[0]?.ladder_step, '2160p_encode');
@@ -516,7 +516,7 @@ test('S3: single picker preserves the explicit selected ladder step over stale s
     name: '[TB☁️⚡] Torrentio 2160p',
     description: '2160p HEVC SDR',
     ladder_step: 'stale_step',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   assert.equal(
     singlePickerCandidate([picked], picked.url, '4k_sdr_remux_cached')?.ladder_step,
@@ -528,12 +528,12 @@ test('S3: hard language applies to main, last resort, and obligation floor', () 
   const english = stream({
     url: 'https://example.test/english-only.mkv',
     description: '1080p WEB-DL\n🌐 🇬🇧',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|false|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|uncached|1080p' },
   });
   const hindi = stream({
     url: 'https://example.test/hindi.mkv',
     description: '1080p WEB-DL\n🌐 🇮🇳',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|false|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|uncached|1080p' },
   });
   const main = expandPlayLadder([english, hindi], defaultPlayLadder(), {}, { hard_language: 'Hindi' });
   const floor = expandObligationFloor([english, hindi], {}, { hard_language: 'Hindi' });
@@ -545,12 +545,12 @@ test('S3: preferred language reorders without excluding other languages', () => 
   const english = stream({
     url: 'https://example.test/english-preference.mkv',
     description: '1080p WEB-DL\n🌐 🇬🇧',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const hindi = stream({
     url: 'https://example.test/hindi-preference.mkv',
     description: '1080p WEB-DL\n🌐 🇮🇳',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const ranked = expandPlayLadder([english, hindi], defaultPlayLadder(), {}, {
     preferred_language: 'Hindi',
@@ -564,13 +564,13 @@ test('S3: explicit quality/remux overrides produce the same picker and autoplay 
     url: 'https://example.test/remux-4k.mkv',
     name: '[TB☁️⚡] Torrentio 2160p',
     description: '2160p REMUX HEVC',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const encode1080 = stream({
     url: 'https://example.test/encode-1080.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
     description: '1080p WEB-DL HEVC',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const options = {
     min_quality: '2160p' as const,
@@ -600,7 +600,7 @@ test('expandObligationFloor keeps integrity-safe TorBox uncached streams without
     url: 'https://example.test/cam.mkv',
     name: '[TB⚡] CAM 480p',
     description: 'CAMRip telesync',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|false|480p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|uncached|480p' },
   });
   const ranked = expandObligationFloor([uncached, cam], { contentType: 'movie' }, {
     maxCandidates: 6,
@@ -632,7 +632,7 @@ test('expandObligationFloor excludes URLs already attempted in Phase A', () => {
     url: 'https://example.test/first.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
     description: 'WEB-DL 1080p',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const second = stream({
     url: 'https://example.test/second.mkv',
@@ -653,7 +653,7 @@ test('selectDisplayStreamCandidates uses preference ladder when Phase A has matc
     url: 'https://example.test/cached-1080.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
     description: 'WEB-DL 1080p',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const floorOnly = stream({
     url: 'https://example.test/floor-720.mkv',
@@ -717,7 +717,7 @@ test('selectDisplayStreamCandidates stays empty when neither phase has integrity
     url: 'https://example.test/cam-only.mkv',
     name: '[TB⚡] CAM 480p',
     description: 'CAMRip telesync',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|false|480p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|uncached|480p' },
   });
   const selected = selectDisplayStreamCandidates(
     [cam],
@@ -734,13 +734,13 @@ test('selectDisplayStreamCandidates excludes last_resort when verified smooth st
     url: 'https://example.test/1080p-hevc.mkv',
     name: '[TB☁️⚡] Torrentio 1080p',
     description: 'WEB-DL 1080p HEVC',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const hdrLastResort = stream({
     url: 'https://example.test/2160p-hdr.mkv',
     name: '[TB☁️⚡] Torrentio 2160p HDR',
     description: '2160p BluRay HDR10 HEVC',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const ladder = [
     {
@@ -816,15 +816,15 @@ const HIFI_RANKED_LADDER = [
 test('hifi ladder ranks 4K HEVC > 1080p > 4K AV1 (smoothness-first)', () => {
   const uhdHevc = stream({
     url: 'https://example.test/2160p-hevc.mkv', name: '[TB☁️⚡] Torrentio 2160p',
-    description: '2160p WEB-DL HEVC', behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    description: '2160p WEB-DL HEVC', behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const uhdAv1 = stream({
     url: 'https://example.test/2160p-av1.mkv', name: '[TB☁️⚡] Torrentio 2160p',
-    description: '2160p WEB-DL AV1', behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    description: '2160p WEB-DL AV1', behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const hd = stream({
     url: 'https://example.test/1080p-hevc.mkv', name: '[TB☁️⚡] Torrentio 1080p',
-    description: '1080p WEB-DL HEVC', behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    description: '1080p WEB-DL HEVC', behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const candidates = expandPlayLadder([hd, uhdAv1, uhdHevc], HIFI_RANKED_LADDER, { contentType: 'series' });
   assert.deepEqual(candidates.map((c) => c.stream.url), [uhdHevc.url, hd.url, uhdAv1.url]);
@@ -833,7 +833,7 @@ test('hifi ladder ranks 4K HEVC > 1080p > 4K AV1 (smoothness-first)', () => {
 test('hifi ladder still plays a title whose only stream is 4K AV1 (no exclusion)', () => {
   const uhdAv1Only = stream({
     url: 'https://example.test/only-2160p-av1.mkv', name: '[TB☁️⚡] Torrentio 2160p',
-    description: '2160p WEB-DL AV1', behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    description: '2160p WEB-DL AV1', behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const candidates = expandPlayLadder([uhdAv1Only], HIFI_RANKED_LADDER, { contentType: 'series' });
   assert.equal(candidates.length, 1);
@@ -846,13 +846,13 @@ test('hifi last-resort prefers smooth 1080p TorBox before soft 4K without droppi
     url: 'https://example.test/1080p-torbox-uncached.mkv',
     name: '[TB⏳] Torrentio 1080p',
     description: '1080p WEB-DL HEVC',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|false|1080p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|uncached|1080p' },
   });
   const cached4kAv1 = stream({
     url: 'https://example.test/2160p-av1-cached.mkv',
     name: '[TB☁️⚡] Torrentio 2160p',
     description: '2160p WEB-DL AV1',
-    behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const lastResort = [
     {
@@ -882,11 +882,11 @@ test('hifi last-resort prefers smooth 1080p TorBox before soft 4K without droppi
 test('selectDisplayStreamCandidates hides soft 4K when 1080p verified exists', () => {
   const uhdAv1 = stream({
     url: 'https://example.test/2160p-av1.mkv', name: '[TB☁️⚡] Torrentio 2160p',
-    description: '2160p WEB-DL AV1', behaviorHints: { bingeGroup: 'aiostreams|torbox|true|2160p' },
+    description: '2160p WEB-DL AV1', behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|2160p' },
   });
   const hd = stream({
     url: 'https://example.test/1080p-hevc.mkv', name: '[TB☁️⚡] Torrentio 1080p',
-    description: '1080p WEB-DL HEVC', behaviorHints: { bingeGroup: 'aiostreams|torbox|true|1080p' },
+    description: '1080p WEB-DL HEVC', behaviorHints: { bingeGroup: 'aiostreams|torbox|cached|1080p' },
   });
   const selected = selectDisplayStreamCandidates(
     [uhdAv1, hd],
