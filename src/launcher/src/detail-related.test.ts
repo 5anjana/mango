@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { relatedTitlesLimit, relatedLabelForTab, cardHasCompleteDetailMeta } from "./detail.js";
+import { relatedTitlesLimit, relatedLabelForTab, cardHasCompleteDetailMeta, applyMetaYearToCard } from "./detail.js";
 import { isLandscapeCard } from "./home.js";
 import type { ContentCard } from "./types.js";
 
@@ -52,4 +52,14 @@ test("playback-return skips a second meta fetch when description and poster are 
     description: "loading details…".slice(0, 0),
     posterUrl: "https://img.example/yt.jpg",
   }), false);
+});
+
+test("detail meta year replaces the search card year so play sends the catalog's year", () => {
+  const card: ContentCard = { ...movieCard, year: "1996" };
+  applyMetaYearToCard(card, { year: "1995" });
+  assert.equal(card.year, "1995");
+  applyMetaYearToCard(card, { year: undefined });
+  assert.equal(card.year, "1995");
+  applyMetaYearToCard(card, { year: "" });
+  assert.equal(card.year, "1995");
 });

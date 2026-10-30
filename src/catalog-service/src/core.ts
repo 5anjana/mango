@@ -979,6 +979,10 @@ function metaYear(meta: Meta): number | string | undefined {
   return match?.[0];
 }
 
+// Launcher card year vs exact-id metadata year: one year of slack covers
+// premiere-vs-wide-release reporting differences between catalog sources.
+const IDENTITY_YEAR_TOLERANCE = 1;
+
 function identityYear(value: unknown): number | undefined {
   if (typeof value !== 'string' && typeof value !== 'number') return undefined;
   const match = String(value).match(/\b((?:19|20)\d{2})\b/);
@@ -3652,9 +3656,14 @@ export class CatalogCore {
           || trustedTitlesAreCompatible(hintedTitle, metadataTitle);
         const requestedYear = filterContext.metaYear;
         const metadataYear = identityYear(metaYear(meta));
+        // Exact-id metadata and the launcher card may legitimately disagree by a
+        // year: search catalogs report the wide/regional release (Cinemeta search
+        // says 1996 for tt0114388) while the meta endpoint reports the premiere
+        // (1995). That is the same identity, so keep it certifiable and let the
+        // metadata year win below; wider gaps stay a contradiction.
         const yearCompatible = requestedYear === undefined
           || metadataYear === undefined
-          || requestedYear === metadataYear;
+          || Math.abs(requestedYear - metadataYear) <= IDENTITY_YEAR_TOLERANCE;
         const identityCertifiable = titleCompatible && yearCompatible;
         const trustedTitles = [hintedTitle, identityCertifiable ? metadataTitle : undefined]
           .filter((title, index, titles): title is string => (

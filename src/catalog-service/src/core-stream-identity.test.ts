@@ -290,6 +290,29 @@ test('an exact-id metadata year contradiction cannot broaden or certify the requ
   assert.equal(context.metaRuntimeMinutes, undefined);
 });
 
+test('an exact-id metadata year one off the launcher card stays certifiable on the metadata year', async () => {
+  // Cinemeta's search catalog reports 1996 for tt0114388 (wide release) while
+  // its meta endpoint reports 1995 (premiere); the launcher card keeps the
+  // search value. That must not empty the candidate list.
+  const core = identityCore(async () => ({
+    id: 'tt0114388',
+    type: 'movie',
+    name: 'Sense and Sensibility',
+    year: '1995',
+    releaseInfo: '1995',
+    runtime: '136 min',
+  }));
+  const context = await core.buildStreamFilterContext(
+    'movie',
+    'tt0114388',
+    { title: 'Sense and Sensibility', year: 1996 },
+  );
+  assert.equal(context.identityCertifiable, true);
+  assert.equal(context.metaYear, 1995);
+  assert.deepEqual(context.trustedTitles, ['Sense and Sensibility']);
+  assert.equal(context.metaRuntimeMinutes, 136);
+});
+
 test('metadata request fence rejects a wrong id or declared type', () => {
   assert.equal(metaPieceMatchesRequest(
     { id: 'tt1234567', type: 'series', name: 'Example' },

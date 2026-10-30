@@ -64,6 +64,19 @@ export function cardHasCompleteDetailMeta(card: ContentCard): boolean {
   return Boolean(card.description?.trim() && (card.posterUrl || "").trim());
 }
 
+/**
+ * The card's year came from whichever rail or search hit produced it, and
+ * search catalogs can report a different release year than the title's own
+ * meta (Cinemeta search says 1996 for tt0114388; its meta says 1995). The
+ * catalog compares the year we send on play against that meta, so once the
+ * detail page has the authoritative meta the card must carry its year.
+ */
+export function applyMetaYearToCard(card: ContentCard, meta: Pick<CatalogMeta, "year">): void {
+  if (meta.year !== undefined && meta.year !== null && String(meta.year).trim()) {
+    card.year = meta.year;
+  }
+}
+
 /** Play-only / floor steps — never styled as verified in the side-list. */
 const UNVERIFIED_STREAM_STEPS = new Set([
   "obligation_floor",
@@ -1926,6 +1939,7 @@ export class DetailController {
       if (!this.card || this.card.id !== card.id || this.card.type !== card.type) {
         return;
       }
+      applyMetaYearToCard(card, meta);
       this.title.textContent = meta.name || meta.title || card.title;
       this.meta.textContent = detailMetaLine(meta, card);
       this.updateVerifyBadge(meta.in_library, meta.queued_for_verify);

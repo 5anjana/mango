@@ -177,6 +177,15 @@ display/VO/handoff, cancellation, and play-deadline failures terminate the
 request immediately so a second candidate cannot start after the launcher has
 already been restored.
 
+**Identity hint vs metadata.** The launcher sends the card's title and year
+with every stream list and play request, and catalog-service checks them
+against the exact-id meta before any candidate passes integrity. A one-year
+gap is accepted and the meta year wins, because search catalogs report the
+wide release while meta reports the premiere (Cinemeta search says 1996 for
+Sense and Sensibility; its meta says 1995). A wider gap marks the request
+uncertifiable, which rejects every stream as "no streams found". The detail
+page also copies the meta year onto the card once meta loads.
+
 **Active stream session.** Movie and series plays publish a URL-free
 `~/.cache/mango/active-streams.json` snapshot. Catalog-service remains the sole
 owner of candidate identity, path-capability ranking, isolated validation, and
