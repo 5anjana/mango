@@ -128,9 +128,16 @@ fi
   && gate_pass "mpv deferred foreground handoff enabled" \
   || gate_fail "mpv deferred foreground handoff disabled"
 
-[[ "${MANGO_MPV_VOD_SWAPINTERVAL:-0}" == "0" ]] \
-  && gate_pass "mpv VOD swap interval 0 (non-blocking present; interval 1 stalls 4K HEVC at ~18 fps)" \
-  || gate_warn "mpv VOD swap interval not 0 (${MANGO_MPV_VOD_SWAPINTERVAL:-unset}) — expect ~6 drops/s at 4K"
+if [[ "${MANGO_MPV_X11_PRESENT:-copy}" == "copy" ]]; then
+  grep -q 'x11_copy_presentation()' scripts/m2-catalog/service/mpv-play.sh \
+    && gate_pass "mpv VOD copy presentation (one-row-short window; vsynced copies at vblank)" \
+    || gate_fail "mpv-play missing x11_copy_presentation"
+  [[ "${MANGO_MPV_VOD_SWAPINTERVAL:-1}" == "1" ]] \
+    && gate_pass "mpv VOD swap interval 1 with copy presentation (0 drops at 4K23.98)" \
+    || gate_warn "mpv VOD swap interval ${MANGO_MPV_VOD_SWAPINTERVAL:-unset} with copy presentation — 0 shows black half-frames"
+else
+  gate_warn "mpv VOD fullscreen flip presentation (MANGO_MPV_X11_PRESENT=flip): interval 1 stalls at ~18 fps, interval 0 flashes black"
+fi
 
 if [[ -f /etc/mango/catalog-filters.json && -n "${MANGO_CATALOG_FILTERS:-}" && -f "${MANGO_CATALOG_FILTERS}" ]]; then
   if cmp -s "${MANGO_CATALOG_FILTERS}" /etc/mango/catalog-filters.json; then

@@ -96,14 +96,20 @@ button. Neither replaces the title.
 `--blend-subtitles` defaults to **no** (ASS overlay): `yes` stalls 4K present
 when audio is decoded (~2.5 drops/s on Pi 5 / X11 EGL). Override only for A/B
 via `MANGO_MPV_BLEND_SUBTITLES`.
-VOD `--opengl-swapinterval` defaults to **0** (`MANGO_MPV_VOD_SWAPINTERVAL`).
-With interval 1 the vsynced swap blocks the VO thread ~40 ms per hwdec=drm
-frame regardless of refresh rate (measured 2026-10-29 at 1080p60/120, 4K30 and
-4K23.98), so 4K HEVC runs at ~18 fps: ~6 drops/s, or 0.75x speed when the clock
-yields instead. Interval 0 measured 0 drops at 1.00x in every mode with HDMI
-audio; the swap no longer waits, so the Present flip may land mid-scanout.
-If tearing is seen on pans, set the interval back to 1 and cap the ladder at
-1080p rather than accepting the 4K drops.
+VOD windows are **one row short of the panel** (`MANGO_MPV_X11_PRESENT=copy`,
+default) with `--opengl-swapinterval` **1** (`MANGO_MPV_VOD_SWAPINTERVAL`). On
+this X stack (Xorg 21.1 modesetting + glamor, no compositor, no TearFree) a
+fullscreen window is page-flipped by Present and a vsynced swap completes only
+every ~3 refreshes: a plain 1080p24 test source measured 18 fps at 1080p60,
+and 4K HEVC 6 drops/s or 0.58x. Swap interval 0 removed the stall but
+presented mid-scan, showing black half-frames every ~2 s (seen 2026-11-01 in
+flip and copy mode alike, at 23.98 and 30 Hz). A window that does not cover the
+screen is not flip-eligible, so Present copies each finished frame at vblank:
+0 drops, vsync-ratio 1.00, jitter 0.005 at 4K23.98 with hwdec=drm and HDMI
+audio. The window follows every HDMI mode switch (`apply_mpv_window_mode`).
+`MANGO_MPV_X11_PRESENT=flip` restores fullscreen, where interval 0 is the
+default. The untested proper fix is Xorg `Option "PageFlip" "off"` for
+modesetting (needs an X restart), or playback on KMS without X.
 
 **Deferred foreground handoff.** When `MANGO_MPV_DEFER_FOREGROUND=1` (default
 when `MANGO_MPV_STOP_LAUNCHER=1`, set by `mpv`/`mpv-hifi` profiles), `mpv-play.sh`

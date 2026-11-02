@@ -895,7 +895,7 @@ append_mpv_hud_args() {
   [[ "${MANGO_PLAYBACK_OSD_BACKEND:-lua}" == "lua" ]] || return 0
   local hud_lua="$SCRIPT_DIR/mango-hud.lua"
   [[ -f "$hud_lua" ]] || return 0
-  # In-mpv HUD (libass overlay): one window keeps mpv's fullscreen page-flip path
+  # In-mpv HUD (libass overlay): one window keeps mpv's presentation path
   # intact — no external overlay window to force recompositing and stutter 4K
   # present. Disable the mouse OSC and the native seek bar so nothing else draws
   # over the frame; the pad triggers our HUD via `script-message mango-hud-show`.
@@ -943,20 +943,74 @@ append_mpv_vod_startup_policy_args() {
   fi
   append_mpv_subtitle_startup_args
   append_mpv_cache_args
-  # Default 0: on Pi 5 / X11 EGL a vsynced (interval 1) eglSwapBuffers blocks
-  # the VO thread ~40 ms per frame on hwdec=drm frames, independent of refresh
-  # rate (measured identical at 1080p60/120, 4K30, 4K23.98), so 4K HEVC
-  # plays at ~18 fps: ~6 drops/s or 0.75x speed. Interval 0 measured 0 drops at
-  # 1.00x on the same file in every mode, with HDMI audio and A/V sync intact.
-  # Set MANGO_MPV_VOD_SWAPINTERVAL=1 to A/B the old tear-free-but-stuttering path.
-  case "${MANGO_MPV_VOD_SWAPINTERVAL:-0}" in
+  # Vsynced swap (1) with copy presentation: 0 drops at 4K23.98. Only the
+  # fullscreen flip path (MANGO_MPV_X11_PRESENT=flip) needs interval 0 to avoid
+  # the ~3-refresh swap stall, at the price of mid-scan black half-frames.
+  # See x11_copy_presentation.
+  local default_swap=1
+  x11_copy_presentation || default_swap=0
+  case "${MANGO_MPV_VOD_SWAPINTERVAL:-$default_swap}" in
     0 | no | false) mpv_args+=(--opengl-swapinterval=0) ;;
-    *) mpv_args+=(--opengl-swapinterval="${MANGO_MPV_VOD_SWAPINTERVAL}") ;;
+    *) mpv_args+=(--opengl-swapinterval="${MANGO_MPV_VOD_SWAPINTERVAL:-$default_swap}") ;;
   esac
   append_mpv_hud_args
   append_mpv_volume_scale_args
   if [[ -n "$START_SEC" && "$START_SEC" =~ ^[0-9]+$ && "$START_SEC" -gt 0 ]]; then
     mpv_args+=(--start="$START_SEC")
+  fi
+}
+
+# X11 presentation for VOD. On this Pi 5 X stack (Xorg 21.1 modesetting +
+# glamor, no compositor, no TearFree) a fullscreen window is page-flipped by
+# Present, and a vsynced swap then completes only every ~3 refreshes: a plain
+# 1080p24 test source measured 18 fps at 1080p60; 4K HEVC showed 6 drops/s or
+# ran at 0.58x. Swap interval 0 avoids the stall but presents mid-scan, which
+# shows black half-frames every ~2 s. A window one row short of the screen is
+# not flip-eligible, so Present copies each finished frame at vblank instead:
+# measured 0 drops, vsync-ratio 1.00, jitter 0.005 at 4K23.98 with hwdec=drm
+# and HDMI audio (2026-11-01). MANGO_MPV_X11_PRESENT=flip restores fullscreen.
+x11_copy_presentation() {
+  $LIVE && return 1
+  [[ "${MANGO_MPV_X11_PRESENT:-copy}" == "copy" ]]
+}
+
+# Prints WxH of the connected output's active mode, e.g. 3840x2160.
+current_display_geometry() {
+  DISPLAY="${DISPLAY:-:0}" xrandr --query 2>/dev/null | awk '
+    / connected/ {
+      for (i = 3; i <= NF; i++) if ($i ~ /^[0-9]+x[0-9]+\+/) { split($i, a, "+"); print a[1]; exit }
+    }'
+}
+
+copy_presentation_geometry() {
+  local size width height
+  size="$(current_display_geometry)"
+  width="${size%%x*}"
+  height="${size##*x}"
+  [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ && "$height" -gt 1 ]] || return 1
+  printf '%sx%s+0+0\n' "$width" "$((height - 1))"
+}
+
+append_mpv_window_args() {
+  local geometry
+  if x11_copy_presentation && geometry="$(copy_presentation_geometry)"; then
+    mpv_args+=(--no-fs --no-border --ontop "--geometry=${geometry}")
+  else
+    mpv_args+=(--fs)
+  fi
+}
+
+# Runtime form for the vo=null buffer path and after HDMI mode changes: the
+# window size is tied to the panel mode, so it must follow every switch.
+apply_mpv_window_mode() {
+  local geometry
+  if x11_copy_presentation && geometry="$(copy_presentation_geometry)"; then
+    printf '%s\n' '{"command":["set_property","border",false]}' | socat - "$SOCKET" >/dev/null 2>&1 || true
+    printf '%s\n' '{"command":["set_property","ontop",true]}' | socat - "$SOCKET" >/dev/null 2>&1 || true
+    printf '%s\n' '{"command":["set_property","fullscreen",false]}' | socat - "$SOCKET" >/dev/null 2>&1 || true
+    printf '{"command":["set_property","geometry","%s"]}\n' "$geometry" | socat - "$SOCKET" >/dev/null 2>&1 || return 1
+  else
+    printf '%s\n' '{"command":["set_property","fullscreen",true]}' | socat - "$SOCKET" >/dev/null 2>&1 || return 1
   fi
 }
 
@@ -1033,7 +1087,7 @@ enable_mpv_display_once() {
   if [[ -n "${MANGO_MPV_INTERPOLATION:-no}" ]]; then
     printf '{"command":["set_property","interpolation","%s"]}\n' "${MANGO_MPV_INTERPOLATION:-no}" | socat - "$SOCKET" >/dev/null 2>&1 || true
   fi
-  printf '%s\n' '{"command":["set_property","fullscreen",true]}' | socat - "$SOCKET" >/dev/null 2>&1 || return 1
+  apply_mpv_window_mode || return 1
   restore_mpv_ao
   apply_4k_video_sync
   return 0
@@ -1383,7 +1437,7 @@ append_mpv_play_args() {
     # Indexer/gate probes must not seize the TV fullscreen.
     mpv_args+=(--vo=null --ao=null --really-quiet)
   else
-    mpv_args+=(--fs)
+    append_mpv_window_args
     if (( ${#audio_args[@]} > 0 )); then
       mpv_args+=("${audio_args[@]}")
     fi
@@ -1501,6 +1555,11 @@ foreground_handoff() {
     else
       bash "$REPO_DIR/scripts/lib/mango-display-mode.sh" playback 2>/dev/null || true
     fi
+  fi
+  # Copy presentation sizes the window to the panel mode, so an already-visible
+  # VO must follow the HDMI switch above.
+  if ! $NULL_BUFFER || $DISPLAY_ENABLED; then
+    apply_mpv_window_mode || true
   fi
   # Buffer path: bring up the GPU VO only now — the launcher is hidden, the root
   # is black, and the panel is already at the target (4K) mode — so the first
