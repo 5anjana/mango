@@ -36,11 +36,11 @@ services:
     restart: unless-stopped
     mem_limit: 512m
     ports:
-      - "127.0.0.1:3036:8080"
+      - "127.0.0.1:3037:8080"
     environment:
       STREMTHRU_PORT: "8080"
       # Only used for links StremThru itself generates; mpv runs on this host.
-      STREMTHRU_BASE_URL: "http://127.0.0.1:3036"
+      STREMTHRU_BASE_URL: "http://127.0.0.1:3037"
       STREMTHRU_DATA_DIR: "/app/data"
       # Hand out direct TorBox/Real-Debrid URLs: mpv already plays those and an
       # extra local proxy hop would only add a failure point.
