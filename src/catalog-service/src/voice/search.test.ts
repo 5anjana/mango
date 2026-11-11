@@ -10,6 +10,9 @@ import {
 
 test('scoreTitleMatch ranks exact and prefix matches highest', () => {
   assert.equal(scoreTitleMatch('Panchayat', 'panchayat'), 100);
+  assert.equal(scoreTitleMatch('Emma.', 'emma'), 100);
+  assert.equal(scoreTitleMatch('Emma', 'emma.'), 100);
+  assert.equal(scoreTitleMatch('Amélie', 'amelie'), 100);
   assert.ok(scoreTitleMatch('Panchayat Season 2', 'panch') >= 90);
   assert.ok(scoreTitleMatch('The Shawshank Redemption', 'shawshank') >= 70);
   assert.equal(scoreTitleMatch('Dark Knight', 'panchayat'), 0);

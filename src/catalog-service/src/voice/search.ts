@@ -14,7 +14,14 @@ export type VoiceSearchHit = {
 };
 
 function normalizeText(value: string): string {
-  return value.toLowerCase().trim().replace(/\s+/g, ' ');
+  // Fold accents and drop punctuation so "Emma." scores as an exact match for
+  // "emma" instead of a prefix one. Letters from every script are kept.
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 }
 
 /** Score title against query — higher is better; 0 means no match. */
