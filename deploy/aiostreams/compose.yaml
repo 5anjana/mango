@@ -45,5 +45,10 @@ services:
       # Hand out direct TorBox/Real-Debrid URLs: mpv already plays those and an
       # extra local proxy hop would only add a failure point.
       STREMTHRU_STORE_CONTENT_PROXY: "*:false"
+      # AIOStreams only needs the store API (cache checks, magnet add, links).
+      # The default feature set also runs the DMM hashlist and IMDb title
+      # importers, which wrote 5 GB to the SD card in 20 minutes at 15%
+      # iowait and visibly dropped 4K frames. Keep those workers off.
+      STREMTHRU_FEATURE: "-torz,-newz,-dmm_hashlist,-imdb_title,-probe_media_info,-sync"
     volumes:
       - "${MANGO_STREMTHRU_DATA_DIR:-${HOME}/.local/share/mango/stremthru/data}:/app/data"
