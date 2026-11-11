@@ -19,5 +19,31 @@ services:
       # the parsed release date, while ordinary SxxExx releases still use the
       # normal season/episode matcher.
       BUILTIN_SCRAPE_DATE_BASED_MIN_SEASONS: "${MANGO_AIOSTREAMS_DATE_BASED_MIN_SEASONS:-1}"
+      # Service wrap, cache checks and check-owned all go through StremThru.
+      # Upstream defaults to the public stremthru.13377001.xyz, which began
+      # answering 404 to every API call on 2026-11-10 and took every debrid
+      # stream down with it. Use the instance below; debrid tokens still travel
+      # per request from AIOStreams, nothing is stored in StremThru.
+      BUILTIN_STREMTHRU_URL: "${MANGO_STREMTHRU_URL:-http://stremthru:8080}"
+    depends_on:
+      - stremthru
     volumes:
       - "${MANGO_AIOSTREAMS_DATA_DIR:-${HOME}/.local/share/mango/aiostreams/data}:/app/data"
+
+  stremthru:
+    image: muniftanjim/stremthru:${MANGO_STREMTHRU_IMAGE_TAG:-0.105.4}
+    container_name: mango-stremthru
+    restart: unless-stopped
+    mem_limit: 512m
+    ports:
+      - "127.0.0.1:3036:8080"
+    environment:
+      STREMTHRU_PORT: "8080"
+      # Only used for links StremThru itself generates; mpv runs on this host.
+      STREMTHRU_BASE_URL: "http://127.0.0.1:3036"
+      STREMTHRU_DATA_DIR: "/app/data"
+      # Hand out direct TorBox/Real-Debrid URLs: mpv already plays those and an
+      # extra local proxy hop would only add a failure point.
+      STREMTHRU_STORE_CONTENT_PROXY: "*:false"
+    volumes:
+      - "${MANGO_STREMTHRU_DATA_DIR:-${HOME}/.local/share/mango/stremthru/data}:/app/data"

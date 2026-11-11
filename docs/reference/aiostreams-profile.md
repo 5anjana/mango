@@ -116,6 +116,7 @@ credentials or generated manifest URLs into Git or logs.
 | Comet | Enabled, stream resource only | Secondary indexer; no direct Mango export |
 | MediaFusion | Enabled target, stream-only movie/series | Use AIO's non-secret HTTPS base integration with existing TorBox/RD services, cached-search-only; never retain an expired secret share-manifest override |
 | Other addons | Disabled unless a measured, reviewed need exists | Preserve sole-AIO topology |
+| StremThru | Self-hosted, `mango-stremthru` in `deploy/aiostreams/compose.yaml` | Service wrap, cache checks and check-owned run through it. The upstream default, the public `stremthru.13377001.xyz`, returned 404 for every API path from 2026-11-10, which emptied every debrid result. `BUILTIN_STREMTHRU_URL` points AIOStreams at the local instance; content proxying is off so streams stay direct debrid URLs. |
 
 The latest recorded home snapshot had Torrentio/Comet contributing and
 TorBox/RD/Easynews configured. That is a dated runtime observation. Use

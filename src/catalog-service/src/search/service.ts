@@ -209,7 +209,10 @@ function uniqueRanked(
     .sort((left, right) => {
       if (right.score !== left.score) return right.score - left.score;
       const boost = (selectionBoosts.get(right.key) || 0) - (selectionBoosts.get(left.key) || 0);
-      return boost || left.title.localeCompare(right.title);
+      // Equal score and boost: keep arrival order (local index rank, then the
+      // catalog's popularity order for external hits). Alphabetical ordering
+      // put "Emma." (2020) behind every bare "Emma" and out of Top results.
+      return boost;
     })
     .slice(0, limit);
 }

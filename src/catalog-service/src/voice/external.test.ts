@@ -4,8 +4,10 @@ import {
   catalogMetaYear,
   couchFacingLibraryStatus,
   deriveLibraryVerifyState,
+  rankExternalHits,
   shouldRequeueFailedExactMatch,
 } from './external.js';
+import type { ExternalSearchHit } from './external.js';
 
 test('deriveLibraryVerifyState marks verified titles in_library and not queued', () => {
   assert.deepEqual(deriveLibraryVerifyState('verified'), { inLibrary: true, alreadyQueued: false });
@@ -43,4 +45,32 @@ test('shouldRequeueFailedExactMatch only for exact-score tombstones', () => {
   assert.equal(shouldRequeueFailedExactMatch('verified', 100), false);
   assert.equal(shouldRequeueFailedExactMatch('pending', 100), false);
   assert.equal(shouldRequeueFailedExactMatch(undefined, 100), false);
+});
+
+test('rankExternalHits keeps the catalog order among equal scores instead of sorting by title', () => {
+  const hit = (id: string, title: string, year: string, score = 100): ExternalSearchHit => ({
+    type: 'movie',
+    id,
+    title,
+    year,
+    tab: 'movies',
+    score,
+    in_library: false,
+    library_status: undefined,
+    queued_for_verify: false,
+  });
+  // Cinemeta returns the popular "Emma." (2020) first; its period sorted it
+  // last alphabetically and the result cap dropped it.
+  const ranked = rankExternalHits([
+    hit('tt9214832', 'Emma.', '2020'),
+    hit('tt0116191', 'Emma', '1996'),
+    hit('tt0118308', 'Emma', '1996'),
+    hit('tt0022854', 'Emma', '1932', 92),
+  ]);
+  assert.deepEqual(ranked.map((item) => item.id), ['tt9214832', 'tt0116191', 'tt0118308', 'tt0022854']);
+  const inLibrary = rankExternalHits([
+    hit('tt9214832', 'Emma.', '2020'),
+    { ...hit('tt0116191', 'Emma', '1996'), in_library: true },
+  ]);
+  assert.deepEqual(inLibrary.map((item) => item.id), ['tt0116191', 'tt9214832']);
 });

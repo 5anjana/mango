@@ -1313,7 +1313,10 @@ export function isErrorStream(stream: Stream): boolean {
   if (url && (/example\.com\/ratelimit|ratelimit/i.test(url))) {
     return true;
   }
-  return /\[❌\]|\[x\]|search failed|not found|no streams|error:|stream not found|being downloaded|downloading to debrid|download pending|rate\s*limit exceeded/i.test(haystack);
+  // AIOStreams appends a "🔍 Removal Reasons" summary card when its own
+  // filters removed everything; it has no playable url and must not be
+  // offered as the last candidate ("stream did not start").
+  return /\[❌\]|\[x\]|search failed|not found|no streams|error:|stream not found|being downloaded|downloading to debrid|download pending|rate\s*limit exceeded|removal reasons/i.test(haystack);
 }
 
 /** True when a raw addon stream is worth caching (not a rate-limit / error placeholder). */

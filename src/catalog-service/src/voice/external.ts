@@ -183,15 +183,27 @@ export async function searchExternalTitles(
     }
   }
 
-  results.sort((left, right) => {
-    if (right.score !== left.score) {
-      return right.score - left.score;
-    }
-    if (left.in_library !== right.in_library) {
-      return left.in_library ? -1 : 1;
-    }
-    return left.title.localeCompare(right.title);
-  });
+  return { ok: true, query: trimmed, results: rankExternalHits(results).slice(0, limit) };
+}
 
-  return { ok: true, query: trimmed, results: results.slice(0, limit) };
+/**
+ * Order hits by score, then library membership, then the catalog's own order.
+ * Catalog search returns titles by popularity, so a tie between same-named
+ * titles ("Emma" 1996/2009/2017 and "Emma." 2020) keeps the popular one in
+ * front. The old alphabetical tie-break pushed "Emma." behind every bare
+ * "Emma" because of its period, and the result cap then dropped it entirely.
+ */
+export function rankExternalHits(hits: ExternalSearchHit[]): ExternalSearchHit[] {
+  return hits
+    .map((hit, order) => ({ hit, order }))
+    .sort((left, right) => {
+      if (right.hit.score !== left.hit.score) {
+        return right.hit.score - left.hit.score;
+      }
+      if (left.hit.in_library !== right.hit.in_library) {
+        return left.hit.in_library ? -1 : 1;
+      }
+      return left.order - right.order;
+    })
+    .map(({ hit }) => hit);
 }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Stream } from './core.js';
 import {
+  isErrorStream,
   defaultFilterConfig,
   filterAndRankStreams,
   hasCacheableStream,
@@ -1294,4 +1295,19 @@ test('isCacheableStream rejects rate-limit placeholders', () => {
   assert.equal(isCacheableStream(errorLabel), false);
   assert.equal(hasCacheableStream([errorLabel, rateLimitUrl]), false);
   assert.equal(hasCacheableStream([errorLabel, good]), true);
+});
+
+test('isErrorStream drops the AIOStreams "Removal Reasons" summary card', () => {
+  assert.equal(isErrorStream({
+    name: '🔍 Removal Reasons',
+    description: '📌 Year Matching (7)\n    • 2× Emma - Unknown Year\n📌 Title Matching (1)\n    • 1× Coffee and Kareem - (2020)',
+    url: '',
+    source: 'AIOStreams',
+  } as Stream), true);
+  assert.equal(isErrorStream({
+    name: 'AIOStreams TB+',
+    description: '🎬 Emma. (2020) 🎥 WEB-DL 🎞️ HEVC ⚡Ready (TB)',
+    url: 'https://example.invalid/stream',
+    source: 'AIOStreams',
+  } as Stream), false);
 });
