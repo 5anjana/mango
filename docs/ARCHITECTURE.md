@@ -96,20 +96,25 @@ button. Neither replaces the title.
 `--blend-subtitles` defaults to **no** (ASS overlay): `yes` stalls 4K present
 when audio is decoded (~2.5 drops/s on Pi 5 / X11 EGL). Override only for A/B
 via `MANGO_MPV_BLEND_SUBTITLES`.
-VOD windows are **one row short of the panel** (`MANGO_MPV_X11_PRESENT=copy`,
-default) with `--opengl-swapinterval` **1** (`MANGO_MPV_VOD_SWAPINTERVAL`). On
-this X stack (Xorg 21.1 modesetting + glamor, no compositor, no TearFree) a
-fullscreen window is page-flipped by Present and a vsynced swap completes only
-every ~3 refreshes: a plain 1080p24 test source measured 18 fps at 1080p60,
-and 4K HEVC 6 drops/s or 0.58x. Swap interval 0 removed the stall but
-presented mid-scan, showing black half-frames every ~2 s (seen 2026-11-01 in
-flip and copy mode alike, at 23.98 and 30 Hz). A window that does not cover the
-screen is not flip-eligible, so Present copies each finished frame at vblank:
-0 drops, vsync-ratio 1.00, jitter 0.005 at 4K23.98 with hwdec=drm and HDMI
-audio. The window follows every HDMI mode switch (`apply_mpv_window_mode`).
-`MANGO_MPV_X11_PRESENT=flip` restores fullscreen, where interval 0 is the
-default. The untested proper fix is Xorg `Option "PageFlip" "off"` for
-modesetting (needs an X restart), or playback on KMS without X.
+**VOD presentation is KMS, not X** (`MANGO_MPV_PRESENT=kms`, default;
+`scripts/lib/mango-kms.sh`). At display enable `mpv-play.sh` switches the Pi
+to VT 1 (`sudo -n chvt`), which makes X drop DRM master, then brings up mpv's
+VO with `--gpu-context=drm` on the vc4 card and `drm-mode` set to the same
+panel mode the X path chose with xrandr (4K for 4K sources, film at 24 Hz).
+X stays parked on its VT at 1080p60 with the launcher frozen; every stop and
+restore path calls `kms_return_display` first. Measured 2026-11-10 with a 4K
+HEVC 23.98 stream: 0 drops, vsync-ratio 1.00, jitter 0.009, in both
+`display-resample` and `audio` sync. The X11 fallback (`MANGO_MPV_PRESENT=x11`,
+or when DRM/chvt are unavailable) is the **one-row-short window**
+(`MANGO_MPV_X11_PRESENT=copy`) with `--opengl-swapinterval` **1**: on this X
+stack (Xorg 21.1 modesetting + glamor, no compositor, no TearFree) a
+fullscreen window is page-flipped and a vsynced swap completes only every ~3
+refreshes (18 fps for a 1080p24 test source), interval 0 presents mid-scan
+with black half-frames, and the copy window avoids both but shows an
+occasional tear line because the copy shares the GPU with mpv's render.
+`MANGO_MPV_X11_PRESENT=flip` restores fullscreen. Measurements must be taken
+on an idle Pi: background importers or probes (CPU, SD iowait, the HEVC
+decoder) show up as late frames that look exactly like a presentation fault.
 
 **Deferred foreground handoff.** When `MANGO_MPV_DEFER_FOREGROUND=1` (default
 when `MANGO_MPV_STOP_LAUNCHER=1`, set by `mpv`/`mpv-hifi` profiles), `mpv-play.sh`

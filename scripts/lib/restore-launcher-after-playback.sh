@@ -37,6 +37,8 @@ source "$REPO_DIR/scripts/lib/launcher-window.sh"
 source "$REPO_DIR/scripts/lib/launcher-power.sh"
 # shellcheck source=mango-browse-display.sh
 source "$REPO_DIR/scripts/lib/mango-browse-display.sh"
+# shellcheck source=mango-kms.sh
+source "$REPO_DIR/scripts/lib/mango-kms.sh"
 
 ensure_launcher_browser() {
   if pgrep -f "$(launcher_browser_pattern)" >/dev/null 2>&1; then
@@ -85,6 +87,8 @@ focus_launcher_home() {
 
 phase_restore_browse_hdmi() {
   rm -f "$PLAYBACK_ACTIVE_FILE"
+  # KMS playback parks X on its VT; bring it back before touching xrandr.
+  kms_return_display || true
   # Keep lxpanel/wallpaper hidden during the xrandr gap so the Pi desktop never flashes.
   hide_desktop_chrome
   # Always force browse HDMI here — finish runs only after foreground mpv teardown.

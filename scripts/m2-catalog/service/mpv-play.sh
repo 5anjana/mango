@@ -79,6 +79,8 @@ source "$REPO_DIR/scripts/lib/launcher-power.sh"
 # process's boot-time environment (24fps movies were left on 60Hz).
 # shellcheck source=../../lib/mango-playback-env.sh
 source "$REPO_DIR/scripts/lib/mango-playback-env.sh"
+# shellcheck source=../../lib/mango-kms.sh
+source "$REPO_DIR/scripts/lib/mango-kms.sh"
 AUDIO_ENV="${HOME}/.config/mango/audio.env"
 if [[ -f "$AUDIO_ENV" ]]; then
   # shellcheck disable=SC1090
@@ -577,7 +579,8 @@ apply_4k_video_sync() {
 }
 
 resolve_4k_video_sync_value() {
-  if [[ -f "$PLAYBACK_DISPLAY_MATCHED_FILE" ]]; then
+  # KMS sets the panel mode itself, so a taken display counts as matched.
+  if [[ -f "$PLAYBACK_DISPLAY_MATCHED_FILE" ]] || $KMS_TAKEN; then
     printf '%s\n' "${MANGO_MPV_VIDEO_SYNC_4K_MATCHED:-audio}"
   else
     printf '%s\n' "${MANGO_MPV_VIDEO_SYNC_4K:-display-vdrop}"
@@ -907,6 +910,9 @@ append_mpv_hud_args() {
 }
 
 append_mpv_gpu_startup_args() {
+  if $KMS_PRESENT; then
+    mpv_args+=(--gpu-context=drm "--drm-device=$(kms_drm_device)")
+  fi
   if [[ -n "${MANGO_MPV_GPU_API:-opengl}" ]]; then
     mpv_args+=("--gpu-api=${MANGO_MPV_GPU_API:-opengl}")
   fi
@@ -948,7 +954,9 @@ append_mpv_vod_startup_policy_args() {
   # the ~3-refresh swap stall, at the price of mid-scan black half-frames.
   # See x11_copy_presentation.
   local default_swap=1
-  x11_copy_presentation || default_swap=0
+  if ! $KMS_PRESENT && ! x11_copy_presentation; then
+    default_swap=0
+  fi
   case "${MANGO_MPV_VOD_SWAPINTERVAL:-$default_swap}" in
     0 | no | false) mpv_args+=(--opengl-swapinterval=0) ;;
     *) mpv_args+=(--opengl-swapinterval="${MANGO_MPV_VOD_SWAPINTERVAL:-$default_swap}") ;;
@@ -969,8 +977,15 @@ append_mpv_vod_startup_policy_args() {
 # not flip-eligible, so Present copies each finished frame at vblank instead:
 # measured 0 drops, vsync-ratio 1.00, jitter 0.005 at 4K23.98 with hwdec=drm
 # and HDMI audio (2026-11-01). MANGO_MPV_X11_PRESENT=flip restores fullscreen.
+# KMS presentation (scripts/lib/mango-kms.sh): mpv owns the HDMI output on its
+# own VT, X stays parked. Decided once per play before the args are built;
+# falls back to the X11 copy window when DRM or chvt are unavailable.
+KMS_PRESENT=false
+KMS_TAKEN=false
+
 x11_copy_presentation() {
   $LIVE && return 1
+  $KMS_PRESENT && return 1
   [[ "${MANGO_MPV_X11_PRESENT:-copy}" == "copy" ]]
 }
 
@@ -993,6 +1008,8 @@ copy_presentation_geometry() {
 
 append_mpv_window_args() {
   local geometry
+  # DRM has no window: mpv scans out the whole panel at the chosen mode.
+  $KMS_PRESENT && return 0
   if x11_copy_presentation && geometry="$(copy_presentation_geometry)"; then
     mpv_args+=(--no-fs --no-border --ontop "--geometry=${geometry}")
   else
@@ -1004,6 +1021,7 @@ append_mpv_window_args() {
 # window size is tied to the panel mode, so it must follow every switch.
 apply_mpv_window_mode() {
   local geometry
+  $KMS_PRESENT && return 0
   if x11_copy_presentation && geometry="$(copy_presentation_geometry)"; then
     printf '%s\n' '{"command":["set_property","border",false]}' | socat - "$SOCKET" >/dev/null 2>&1 || true
     printf '%s\n' '{"command":["set_property","ontop",true]}' | socat - "$SOCKET" >/dev/null 2>&1 || true
@@ -1067,6 +1085,26 @@ append_mpv_buffer_args() {
 enable_mpv_display_once() {
   command -v socat >/dev/null 2>&1 || return 1
   [[ -S "$SOCKET" ]] || return 1
+  if $KMS_PRESENT && ! $KMS_TAKEN; then
+    # Take the VT before the VO exists so mpv opens DRM as master, and give it
+    # the panel mode the X path would have set with xrandr.
+    if kms_take_display; then
+      KMS_TAKEN=true
+      local drm_mode
+      drm_mode="$(kms_drm_mode_for \
+        "${video_width:-$(mpv_property_optional width)}" \
+        "${video_height:-$(mpv_property_optional height)}" \
+        "${video_fps:-$(mpv_property_optional container-fps)}" 2>/dev/null || true)"
+      if [[ -n "$drm_mode" ]]; then
+        printf '{"command":["set_property","drm-mode","%s"]}\n' "$drm_mode" | socat - "$SOCKET" >/dev/null 2>&1 || true
+      fi
+      echo "kms: display vt=$(kms_playback_vt) mode=${drm_mode:-preferred}" >&2
+    else
+      echo "WARN: kms: could not take the display; falling back to the X11 copy window" >&2
+      KMS_PRESENT=false
+      printf '%s\n' '{"command":["set_property","gpu-context","x11egl"]}' | socat - "$SOCKET" >/dev/null 2>&1 || true
+    fi
+  fi
   printf '{"command":["set_property","vo","%s"]}\n' "${MANGO_MPV_VO:-gpu}" | socat - "$SOCKET" >/dev/null 2>&1 || return 1
   if [[ -n "${MANGO_MPV_GPU_API:-opengl}" ]]; then
     printf '{"command":["set_property","gpu-api","%s"]}\n' "${MANGO_MPV_GPU_API:-opengl}" | socat - "$SOCKET" >/dev/null 2>&1 || true
@@ -1546,8 +1584,9 @@ foreground_handoff() {
       video_label="${video_width}x${video_height}@${video_fps}"
     fi
   fi
-  # HDMI SSOT: match only after launcher is hidden + root is black.
-  if [[ ! -f "$PLAYBACK_DISPLAY_MATCHED_FILE" ]]; then
+  # HDMI SSOT: match only after launcher is hidden + root is black. On KMS the
+  # X mode is untouched; mpv sets the panel mode itself at display enable.
+  if ! $KMS_PRESENT && [[ ! -f "$PLAYBACK_DISPLAY_MATCHED_FILE" ]]; then
     if [[ -n "$video_width" && -n "$video_height" && -n "$video_fps" ]]; then
       if pre_match_playback_display "$video_width" "$video_height" "$video_fps"; then
         settle_after_display_match
@@ -1757,6 +1796,10 @@ if $PROBE; then
   DEFER_FOREGROUND=0
 fi
 echo "mpv-play: $URL_LABEL mode=$MODE backend=mpv live=$LIVE timeout_ms=$TIMEOUT_MS min_duration_sec=$MIN_DURATION_SEC hwdec=$HWDEC audio=${audio_label} video=${video_label}"
+if ! $PROBE && ! $LIVE && kms_available; then
+  KMS_PRESENT=true
+  echo "mpv-play: presentation=kms device=$(kms_drm_device) vt=$(kms_playback_vt)" >&2
+fi
 HANDOFF_DONE=false
 DISPLAY_ENABLED=false
 NULL_BUFFER=false

@@ -34,7 +34,10 @@ test('HUD context reaches mpv only as bounded safe metadata', () => {
   assert.equal(playbackHudEnv({ kind: 'not-real' as never }).MANGO_PLAYBACK_KIND, 'unknown');
 });
 
-async function printDeferredArgs(ladderStep: string): Promise<string[]> {
+async function printDeferredArgs(
+  ladderStep: string,
+  extraEnv: Record<string, string> = {},
+): Promise<string[]> {
   const home = await mkdtemp(join(tmpdir(), 'mango-mpv-args-'));
   try {
     const stdout = await new Promise<string>((resolvePromise, reject) => {
@@ -61,6 +64,7 @@ async function printDeferredArgs(ladderStep: string): Promise<string[]> {
           MANGO_MPV_CACHE: 'yes',
           MANGO_MPV_READAHEAD_SECS: '30',
           MANGO_MPV_VOD_SWAPINTERVAL: '1',
+          ...extraEnv,
         },
       }, (error, output, stderr) => {
         if (error) reject(new Error(stderr || output || error.message));
@@ -352,4 +356,27 @@ test('S4: a hung ffprobe is bounded by the shared script deadline', async () => 
   } finally {
     await rm(home, { recursive: true, force: true });
   }
+});
+
+test('KMS presentation gives mpv the DRM context and no X window, X11 keeps the copy window', async () => {
+  const kms = await printDeferredArgs('4k_sdr_cached', {
+    MANGO_MPV_PRESENT: 'kms',
+    MANGO_MPV_DRM_DEVICE: '/dev/null',
+    MANGO_MPV_CHVT: 'true',
+  });
+  for (const expected of ['--gpu-context=drm', '--drm-device=/dev/null', '--opengl-swapinterval=1', '--vo=null']) {
+    assert.ok(kms.includes(expected), `missing ${expected}: ${kms.join(' ')}`);
+  }
+  for (const forbidden of ['--fs', '--no-fs', '--no-border', '--ontop']) {
+    assert.ok(!kms.includes(forbidden), `unexpected ${forbidden}: ${kms.join(' ')}`);
+  }
+  assert.ok(!kms.some((arg) => arg.startsWith('--geometry=')), kms.join(' '));
+
+  const x11 = await printDeferredArgs('4k_sdr_cached', {
+    MANGO_MPV_PRESENT: 'x11',
+    MANGO_MPV_DRM_DEVICE: '/dev/null',
+    MANGO_MPV_CHVT: 'true',
+  });
+  assert.ok(!x11.includes('--gpu-context=drm'), x11.join(' '));
+  assert.ok(x11.includes('--opengl-swapinterval=1'), x11.join(' '));
 });

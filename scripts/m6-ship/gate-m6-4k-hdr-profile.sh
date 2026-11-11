@@ -128,9 +128,21 @@ fi
   && gate_pass "mpv deferred foreground handoff enabled" \
   || gate_fail "mpv deferred foreground handoff disabled"
 
-if [[ "${MANGO_MPV_X11_PRESENT:-copy}" == "copy" ]]; then
+if [[ "${MANGO_MPV_PRESENT:-kms}" == "kms" ]]; then
+  grep -q 'kms_take_display' scripts/m2-catalog/service/mpv-play.sh \
+    && [[ -f scripts/lib/mango-kms.sh ]] \
+    && gate_pass "mpv VOD KMS presentation (mpv owns DRM on its VT; 0 drops, vsync-ratio 1.00 at 4K23.98)" \
+    || gate_fail "mpv-play missing KMS presentation"
+  if [[ -r /sys/class/tty/tty0/active ]]; then
+    if command -v chvt >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      gate_pass "KMS VT switch available (chvt + passwordless sudo)"
+    else
+      gate_warn "KMS VT switch unavailable (chvt/sudo); playback falls back to the X11 copy window, which tears"
+    fi
+  fi
+elif [[ "${MANGO_MPV_X11_PRESENT:-copy}" == "copy" ]]; then
   grep -q 'x11_copy_presentation()' scripts/m2-catalog/service/mpv-play.sh \
-    && gate_pass "mpv VOD copy presentation (one-row-short window; vsynced copies at vblank)" \
+    && gate_pass "mpv VOD copy presentation (one-row-short window; vsynced copies at vblank, occasional tear)" \
     || gate_fail "mpv-play missing x11_copy_presentation"
   [[ "${MANGO_MPV_VOD_SWAPINTERVAL:-1}" == "1" ]] \
     && gate_pass "mpv VOD swap interval 1 with copy presentation (0 drops at 4K23.98)" \
