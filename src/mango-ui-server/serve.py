@@ -289,6 +289,9 @@ _pad_nav_session_seen_at = 0.0
 _pad_nav_render_age_ms = float("inf")
 _pad_nav_last_ack_at = 0.0
 _pad_nav_last_recovery_at = 0.0
+# Last moment the kiosk was known to be paused (playback, frozen unit); the
+# stall budget for pending input restarts from here.
+_pad_nav_resumed_at = 0.0
 _pad_nav_persist_lock: Final = threading.Lock()
 _pad_nav_persist_pending: int | None = None
 _pad_nav_persist_scheduled = False
@@ -485,13 +488,29 @@ def pad_nav_pending_count() -> int:
         return len(_pad_nav_commands)
 
 
+def launcher_unit_frozen() -> bool:
+    """Playback freezes the kiosk cgroup on purpose; unconsumed input is expected then."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "show", "-p", "FreezerState", "--value", PAD_NAV_LAUNCHER_UNIT],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.stdout.strip() in {"frozen", "freezing"}
+
+
 def pad_nav_recovery_reason(now: float | None = None) -> str | None:
     """Claim one bounded kiosk recovery when an input has gone unconsumed."""
-    global _pad_nav_last_recovery_at
+    global _pad_nav_last_recovery_at, _pad_nav_resumed_at
     current = now or time.time()
     # Playback deliberately stops Chromium after session acceptance. A late
     # launcher ack must never resurrect the kiosk over mpv.
     if PLAYBACK_ACTIVE_FILE.is_file():
+        _pad_nav_resumed_at = current
         return None
     with _pad_nav_lock:
         _prune_expired_pad_nav_commands(current)
@@ -504,8 +523,15 @@ def pad_nav_recovery_reason(now: float | None = None) -> str | None:
             float(entry.get("issued_at", current))
             for entry in _pad_nav_commands
         )
-        pending_age = current - oldest
+        # The stall budget starts when the kiosk is actually able to consume
+        # input again, not when a press landed in a paused one.
+        pending_age = current - max(oldest, _pad_nav_resumed_at)
         if pending_age < PAD_NAV_STALL_SEC:
+            return None
+        # Teardown window: playback-active is gone but the kiosk is still frozen
+        # until the restore thaws it. A restart here can only wreck the reveal.
+        if launcher_unit_frozen():
+            _pad_nav_resumed_at = current
             return None
         if current - _pad_nav_last_recovery_at < PAD_NAV_RECOVERY_COOLDOWN_SEC:
             return None

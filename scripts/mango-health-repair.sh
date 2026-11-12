@@ -287,8 +287,18 @@ fi
 
 kill_safe_strays
 
-if ! bash scripts/m1-foundation/pad/pad-health.sh --quiet; then
-  repair_note restart_pad "pad_health"
+pad_health_reason() {
+  # The --json report carries the failing check; the log must name it, or a
+  # mid-playback restart is undiagnosable afterwards.
+  python3 -c 'import json,sys
+try:
+    print(str(json.load(sys.stdin).get("reason") or "unknown"))
+except Exception:
+    print("unknown")' 2>/dev/null || echo unknown
+}
+
+if ! pad_health_json="$(bash scripts/m1-foundation/pad/pad-health.sh --json --quiet 2>/dev/null)"; then
+  repair_note restart_pad "pad_health:$(printf '%s' "$pad_health_json" | pad_health_reason)"
   MANGO_PAD_REPAIR_WAIT_STEPS="${MANGO_PAD_REPAIR_WAIT_STEPS:-24}" \
     bash scripts/m1-foundation/pad/pad-health.sh --quiet --repair \
     || fail_note pad "repair_failed"

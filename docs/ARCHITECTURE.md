@@ -102,7 +102,13 @@ to VT 1 (`sudo -n chvt`), which makes X drop DRM master, then brings up mpv's
 VO with `--gpu-context=drm` on the vc4 card and `drm-mode` set to the same
 panel mode the X path chose with xrandr (4K for 4K sources, film at 24 Hz).
 X stays parked on its VT at 1080p60 with the launcher frozen; every stop and
-restore path calls `kms_return_display` first. Measured 2026-11-10 with a 4K
+restore path calls `kms_return_display` first. Input ownership follows the
+console, not X focus: while playback is active and `/sys/class/tty/tty0/active`
+is not X's VT, the pad router treats mpv as the visible surface (X still names
+the frozen launcher as its active window), the UI server's pad-nav stall
+watchdog never restarts a frozen kiosk and restarts its stall budget when the
+kiosk thaws, and pad-driven `mpv-stop.sh` runs in a detached user scope so a
+pad restart cannot kill the launcher restore. Measured 2026-11-10 with a 4K
 HEVC 23.98 stream: 0 drops, vsync-ratio 1.00, jitter 0.009, in both
 `display-resample` and `audio` sync. The X11 fallback (`MANGO_MPV_PRESENT=x11`,
 or when DRM/chvt are unavailable) is the **one-row-short window**

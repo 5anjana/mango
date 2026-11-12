@@ -8,6 +8,8 @@ import unittest
 
 from pad_context import (
     contextual_secondary_surface,
+    detached_scope_argv,
+    kms_playback_visible,
     resolve_secondary_surface,
     seek_hud_reason,
     secondary_press_kind,
@@ -78,6 +80,23 @@ class PadContextTest(unittest.TestCase):
             ),
             "launcher",
         )
+
+    def test_kms_playback_hides_x_while_console_is_away_from_x(self) -> None:
+        # mpv presents from tty1; X (tty7) still names the frozen launcher as active.
+        self.assertTrue(kms_playback_visible("tty1", "tty7", True))
+        self.assertFalse(kms_playback_visible("tty7", "tty7", True))
+        # No playback: a console switch alone never claims input for mpv.
+        self.assertFalse(kms_playback_visible("tty1", "tty7", False))
+        self.assertFalse(kms_playback_visible(None, "tty7", True))
+        self.assertFalse(kms_playback_visible("", "tty7", True))
+
+    def test_stop_runs_in_a_detached_scope_when_systemd_run_exists(self) -> None:
+        argv = ["bash", "/x/mpv-stop.sh"]
+        self.assertEqual(
+            detached_scope_argv(argv, True),
+            ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--", *argv],
+        )
+        self.assertEqual(detached_scope_argv(argv, False), argv)
 
     def test_tap_and_hold_boundary(self) -> None:
         self.assertEqual(secondary_press_kind(10.0, 10.59, 0.6), "tap")

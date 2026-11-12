@@ -25,7 +25,13 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from pad_context import resolve_secondary_surface, secondary_press_kind, seek_hud_reason
+from pad_context import (
+    detached_scope_argv,
+    kms_playback_visible,
+    resolve_secondary_surface,
+    secondary_press_kind,
+    seek_hud_reason,
+)
 from pad_mpv_ipc import MpvIpcError, send_mpv_command
 
 try:
@@ -61,6 +67,10 @@ PLAYBACK_ACTIVE_FILE = Path(
     os.environ.get("MANGO_PLAYBACK_ACTIVE_FILE", str(CACHE_DIR / "playback-active"))
 )
 MPV_SOCKET_PATH = Path(os.environ.get("MANGO_MPV_SOCKET", str(CACHE_DIR / "mpv.sock")))
+# KMS playback (scripts/lib/mango-kms.sh) parks X on its VT while mpv presents
+# from another one; the kernel's active console tells which surface is visible.
+ACTIVE_VT_PATH = Path(os.environ.get("MANGO_ACTIVE_VT_PATH", "/sys/class/tty/tty0/active"))
+X_VT_NAME = f"tty{(os.environ.get('MANGO_MPV_X_VT') or '7').strip().lstrip('tty') or '7'}"
 MPV_IPC_TIMEOUT_SEC = float(os.environ.get("MANGO_PAD_MPV_IPC_TIMEOUT_SEC", "0.2"))
 PLAYBACK_SEEK_STEP_SEC = int(
     os.environ.get("MANGO_PLAYBACK_SEEK_STEP_SEC", os.environ.get("MANGO_VLC_SEEK_STEP_SEC", "10"))
@@ -281,7 +291,14 @@ def _tv_env(extra_env: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-def popen_tv_user(argv: list[str], *, extra_env: dict[str, str] | None = None) -> None:
+def popen_tv_user(
+    argv: list[str],
+    *,
+    extra_env: dict[str, str] | None = None,
+    detached: bool = False,
+) -> None:
+    if detached:
+        argv = detached_scope_argv(argv, shutil.which("systemd-run") is not None)
     subprocess.Popen(
         as_tv_user(argv),
         env=_tv_env(extra_env),
@@ -606,6 +623,17 @@ def _playback_session_active() -> bool:
     return result.returncode == 0
 
 
+def _active_vt() -> str | None:
+    try:
+        return ACTIVE_VT_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
+def _kms_playback_visible() -> bool:
+    return kms_playback_visible(_active_vt(), X_VT_NAME, _playback_session_active())
+
+
 _FOREGROUND_CACHE_TTL_SEC = 0.15
 _foreground_cache: dict[str, object] = {"value": None, "expires_at": 0.0}
 _launcher_wid_cache: dict[str, object] = {"wid": None, "expires_at": 0.0}
@@ -649,6 +677,11 @@ def routing_app() -> str:
 
 
 def _resolve_foreground_app() -> str:
+    # On KMS the console is away from X: X still reports the frozen launcher
+    # as active, but the viewer sees mpv. Routing X there posted "secondary"
+    # into a frozen kiosk, which the stall watchdog then "repaired".
+    if _kms_playback_visible():
+        return "mpv"
     wid = _xdotool("getactivewindow").stdout.strip()
     if not wid or wid == "0":
         return "other"
@@ -1027,9 +1060,11 @@ def ensure_playback_osd_daemon() -> None:
 
 
 def stop_mpv_home() -> None:
+    # Detached: the stop + launcher restore must outlive a pad restart.
     popen_tv_user(
         ["bash", str(MPV_STOP_SH)],
         extra_env={"MANGO_MPV_STOP_HOME": "1", "MANGO_SKIP_REMAPPER": "1"},
+        detached=True,
     )
     invalidate_foreground_cache()
 

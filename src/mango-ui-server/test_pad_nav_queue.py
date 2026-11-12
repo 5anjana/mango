@@ -23,6 +23,7 @@ def _reset_queue() -> None:
         serve._pad_nav_render_age_ms = float("inf")
         serve._pad_nav_last_ack_at = 0.0
         serve._pad_nav_last_recovery_at = 0.0
+        serve._pad_nav_resumed_at = 0.0
 
 
 class PadNavQueueTests(unittest.TestCase):
@@ -161,6 +162,45 @@ class PadNavQueueTests(unittest.TestCase):
                 issued_at + serve.PAD_NAV_STALL_SEC + 0.01
             )
         )
+
+    def test_stall_budget_restarts_when_playback_ends(self) -> None:
+        # A press that landed in the paused kiosk must not count as a stall the
+        # instant playback-active disappears (mpv-stop clears it before thaw).
+        self.assertIsNotNone(serve.register_pad_nav_session())
+        serve.enqueue_pad_nav_command({"type": "pad_nav", "action": "secondary"})
+        with serve._pad_nav_lock:
+            issued_at = float(serve._pad_nav_commands[0]["issued_at"])
+        serve.PLAYBACK_ACTIVE_FILE.touch()
+        playback_end = issued_at + 20.0
+        self.assertIsNone(serve.pad_nav_recovery_reason(playback_end))
+        serve.PLAYBACK_ACTIVE_FILE.unlink()
+        self.assertIsNone(serve.pad_nav_recovery_reason(playback_end + 0.25))
+        self.assertIsNone(
+            serve.pad_nav_recovery_reason(playback_end + serve.PAD_NAV_STALL_SEC - 0.01)
+        )
+        self.assertIsNotNone(
+            serve.pad_nav_recovery_reason(playback_end + serve.PAD_NAV_STALL_SEC + 0.01)
+        )
+
+    def test_frozen_kiosk_is_never_restarted_over_pending_input(self) -> None:
+        self.assertIsNotNone(serve.register_pad_nav_session())
+        serve.enqueue_pad_nav_command({"type": "pad_nav", "action": "secondary"})
+        with serve._pad_nav_lock:
+            issued_at = float(serve._pad_nav_commands[0]["issued_at"])
+        original = serve.launcher_unit_frozen
+        frozen = {"value": True}
+        serve.launcher_unit_frozen = lambda: frozen["value"]
+        try:
+            stalled_at = issued_at + serve.PAD_NAV_STALL_SEC + 0.01
+            self.assertIsNone(serve.pad_nav_recovery_reason(stalled_at))
+            frozen["value"] = False
+            # Thawed: the kiosk gets a full stall budget before any restart.
+            self.assertIsNone(serve.pad_nav_recovery_reason(stalled_at + 0.25))
+            self.assertIsNotNone(
+                serve.pad_nav_recovery_reason(stalled_at + serve.PAD_NAV_STALL_SEC + 0.01)
+            )
+        finally:
+            serve.launcher_unit_frozen = original
 
 
 if __name__ == "__main__":
