@@ -1163,7 +1163,14 @@ def route_playback_up(app: str) -> None:
         show_playback_osd("show")
         return
     send_mpv_ipc("set_property", "sub-visibility", "yes")
-    send_mpv_ipc("cycle", "sub", "up")
+    if _mpv_track_id_active(mpv_ipc_data("sid")):
+        send_mpv_ipc("cycle", "sub", "up")
+    else:
+        # First enable: let --slang choose the language; a remux with 50
+        # subtitle tracks must not start on whichever one is listed first.
+        send_mpv_ipc("set_property", "sid", "auto")
+        if not _mpv_track_id_active(mpv_ipc_data("sid")):
+            send_mpv_ipc("cycle", "sub", "up")
     show_playback_osd("subs")
 
 

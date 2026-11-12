@@ -88,6 +88,8 @@ for (const fixture of ['ideal_1080p_hdr', '4k_sdr_cached']) {
       '--initial-audio-sync=yes',
       '--tone-mapping=bt.2446a',
       '--audio-channels=auto-safe',
+      '--alang=en',
+      '--slang=en',
       '--sub-visibility=no',
       '--sub-auto=all',
       '--blend-subtitles=no',

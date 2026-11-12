@@ -925,7 +925,14 @@ append_mpv_gpu_startup_args() {
 }
 
 append_mpv_subtitle_startup_args() {
+  # Track language preference. Without --alang mpv takes the container's
+  # default audio, which on multi-language remuxes is whatever the ripper
+  # flagged (Emma 2020 4K: Turkish). mpv >= 0.37 matches BCP 47 tags, so
+  # "en" also covers en-GB / en-US. Subs stay off at start (sid=no); --slang
+  # decides which track `sid=auto` picks when the pad turns them on.
   mpv_args+=(
+    --alang="${MANGO_MPV_ALANG:-en}"
+    --slang="${MANGO_MPV_SLANG:-en}"
     --sub-visibility=no
     --sid=no
     --sub-auto=all
